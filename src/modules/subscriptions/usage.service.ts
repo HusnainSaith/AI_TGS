@@ -74,6 +74,60 @@ export class UsageService {
     };
     return manager ? run(manager) : this.data.transaction(run);
   }
+  async consume(
+    ent: ResolvedEntitlement,
+    amount: number,
+    referenceType: string,
+    referenceId: string,
+    actorId: string,
+    manager: EntityManager,
+  ) {
+    if (!Number.isSafeInteger(amount) || amount <= 0)
+      throw new EntitlementException(EntitlementErrorCode.ENTITLEMENT_CONFIGURATION_ERROR);
+    await manager.query(
+      `INSERT INTO usage_counters(subscription_id,metric,used,reserved,period_start,period_end) VALUES($1,$2,0,0,$3,$4) ON CONFLICT(subscription_id,metric,period_start,period_end) DO NOTHING`,
+      [ent.subscriptionId, ent.metric, ent.periodStart, ent.periodEnd],
+    );
+    const existing = await manager.query(
+      `SELECT * FROM usage_reservations WHERE reference_type=$1 AND reference_id=$2 AND metric=$3`,
+      [referenceType, referenceId, ent.metric],
+    );
+    if (existing.length) return existing[0];
+    const [counter] = await manager.query(
+      `SELECT * FROM usage_counters WHERE subscription_id=$1 AND metric=$2 AND period_start=$3 AND period_end=$4 FOR UPDATE`,
+      [ent.subscriptionId, ent.metric, ent.periodStart, ent.periodEnd],
+    );
+    if (ent.limit !== null && Number(counter.used) + Number(counter.reserved) + amount > ent.limit)
+      throw new EntitlementException(EntitlementErrorCode.USAGE_LIMIT_EXCEEDED);
+    const [reservation] = await manager.query(
+      `INSERT INTO usage_reservations(subscription_id,usage_counter_id,metric,amount,settled_amount,released_amount,status,reference_type,reference_id,idempotency_key,expires_at,settled_at) VALUES($1,$2,$3,$4,$4,0,'SETTLED',$5,$6,$7,now(),now()) RETURNING *`,
+      [
+        ent.subscriptionId,
+        counter.id,
+        ent.metric,
+        amount,
+        referenceType,
+        referenceId,
+        `${referenceType}:${referenceId}:${ent.metric}`,
+      ],
+    );
+    await manager.query(`UPDATE usage_counters SET used=used+$2,updated_at=now() WHERE id=$1`, [
+      counter.id,
+      amount,
+    ]);
+    await this.ledger(manager, reservation, UsageEventType.SETTLE, amount, 'settle');
+    await this.audit.record(
+      {
+        actorId,
+        action: 'usage.settle',
+        entityType: 'usage_reservation',
+        entityId: reservation.id,
+        metadata: { metric: ent.metric, settled: amount, referenceType, referenceId },
+      },
+      manager,
+    );
+    return reservation;
+  }
   async settleGeneration(jobId: string, actorId?: string) {
     return this.data.transaction(async (m) => {
       const [r] = await m.query(

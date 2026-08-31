@@ -47,4 +47,5 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 9. Implement atomic publication and hybrid retrieval with PostgreSQL FTS, pgvector cosine similarity, curriculum/tenant filters, context packing, and RetrievalEvents. (complete and validated against local PostgreSQL 17.10 + pgvector 0.8.6)
 10. Grounded asynchronous AI generation jobs, evidence-bound prompts, strict output/citation validation, pending-review Question persistence, exact duplicate protection, and item regeneration. (complete; deterministic provider validated, live OpenAI model not configured)
 11. Entitlements, transactional usage reservation/settlement, subscriptions, and quotas. (complete)
-12. Test builder/PDF, followed by payment adapters and hardening.
+12. Persisted Test Builder, immutable snapshots, lifecycle, preview/answer-key render models, and transactional TESTS quota. (complete; PDF deferred)
+13. PDF rendering/storage, followed by payment adapters and hardening.

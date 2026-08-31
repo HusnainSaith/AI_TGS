@@ -32,6 +32,8 @@ import { Subscription } from '../modules/subscriptions/entities/subscription.ent
 import { UsageCounter } from '../modules/subscriptions/entities/usage-counter.entity';
 import { UsageReservation } from '../modules/subscriptions/entities/usage-reservation.entity';
 import { UsageLedger } from '../modules/subscriptions/entities/usage-ledger.entity';
+import { ExamTest } from '../modules/tests/entities/test.entity';
+import { TestQuestion } from '../modules/tests/entities/test-question.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -72,6 +74,8 @@ export default new DataSource({
     UsageCounter,
     UsageReservation,
     UsageLedger,
+    ExamTest,
+    TestQuestion,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

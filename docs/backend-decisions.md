@@ -82,4 +82,13 @@
 - `ENGINEERING_DECISION`: Period counters preserve history and split settled `used` from temporary `reserved`. Reservation locks the counter after conflict-safe creation; settlement locks reservation then counter and counts persisted AI-generated Questions. Unique references plus append-only ledger entries make reservation and settlement idempotent and crash-recoverable.
 - `ENGINEERING_DECISION`: Initial job reservation is transactional with job creation. Terminal/cancel paths settle persisted Questions and release unused capacity. PENDING persisted Questions are charged; insufficient knowledge, rejected invalid/duplicate output, and provider failure charge zero. Each deliberate regeneration attempt reserves incremental capacity.
 - `ENGINEERING_DECISION`: PostgreSQL expiry skips GenerationJobs with a valid processing lease. External retrieval/provider calls never occur inside usage transactions. Payment providers and webhooks remain deferred.
+
+## Persisted Test Builder
+
+- `DOMAIN_DECISION`: Question is reusable mutable bank content; TestQuestion is a self-contained historical snapshot. A restrictive source FK remains for traceability, but paper and answer-key rendering never require current Question content.
+- `ENGINEERING_DECISION`: Snapshots are captured on DRAFT add and change only through explicit refresh. Finalization revalidates source status, ownership, curriculum, and AI approval without silently refreshing content. Later source edits/archive cannot change a finalized Test.
+- `SECURITY_DECISION`: PENDING AI Questions may enter a draft, but finalization requires APPROVED AI Questions. Preview strips correct-answer flags, model answers, and explanations; the authorized answer-key endpoint uses frozen snapshots.
+- `ENGINEERING_DECISION`: Draft creation/edit/clone costs zero. Finalization consumes exactly one `TESTS` unit through shared UsageService and unique `TEST_FINALIZATION` reference. Retry is idempotent, failure charges zero, archive does not refund, and school pooling uses existing entitlement resolution.
+- `CONCURRENCY_DECISION`: Mutations and finalization pessimistically lock the Test row; finalization then locks the usage counter. Finalize/add/reorder races serialize, and totals remain consistent. Position rewrites use a collision-free positive temporary range.
+- `DEFERRED`: PDF engines, generated files/storage, email/printing, and student delivery/grading.
 - `VALIDATION`: Deterministic test generation passed real PostgreSQL publication → retrieval → mixed generation → pending Question/options/citations, authorization, regeneration, cancellation-history, and insufficient-knowledge flows. No live AI call was made because an exact AI_MODEL and key are not configured.
