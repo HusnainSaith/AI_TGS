@@ -46,6 +46,13 @@ export class HealthController {
             this.config.get<string>('aiGeneration.apiKey'),
           ),
       },
+      billingProvider: {
+        provider: this.config.get<string>('billing.provider') || null,
+        configured: Boolean(this.config.get<string>('billing.provider')),
+        productionProviderSelected:
+          Boolean(this.config.get<string>('billing.provider')) &&
+          this.config.get<string>('billing.provider') !== 'test',
+      },
       timestamp: new Date().toISOString(),
     };
   }

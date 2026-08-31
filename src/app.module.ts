@@ -25,6 +25,7 @@ import { AiGenerationModule } from './modules/ai-generation/ai-generation.module
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TestsModule } from './modules/tests/tests.module';
 import { TestExportsModule } from './modules/test-exports/test-exports.module';
+import { BillingModule } from './modules/billing/billing.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -51,6 +52,7 @@ import { TestExportsModule } from './modules/test-exports/test-exports.module';
     SubscriptionsModule,
     TestsModule,
     TestExportsModule,
+    BillingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

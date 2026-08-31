@@ -86,6 +86,14 @@ export const configuration = () => ({
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
   },
   subscription: { reservationTtlMinutes: Number(process.env.USAGE_RESERVATION_TTL_MINUTES ?? 30) },
+  billing: {
+    provider: process.env.PAYMENT_PROVIDER || '',
+    webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
+    successUrl: process.env.BILLING_SUCCESS_URL ?? 'http://localhost:3000/billing/success',
+    cancelUrl: process.env.BILLING_CANCEL_URL ?? 'http://localhost:3000/billing/cancel',
+    portalReturnUrl:
+      process.env.BILLING_PORTAL_RETURN_URL ?? 'http://localhost:3000/settings/billing',
+  },
   pdf: {
     renderer: 'pdf-lib',
     renderVersion: process.env.PDF_RENDER_VERSION ?? 'test-pdf-v1',

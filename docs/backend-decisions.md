@@ -54,6 +54,7 @@
 - `ENGINEERING_DECISION`: Successful extraction sets DocumentVersion `COMPLETED`, KnowledgeDocument `READY_FOR_MAPPING`, and the broad pipeline job `AWAITING_MAPPING`. Mapping, embedding, publication, and retrieval have not occurred.
 - `ENGINEERING_DECISION`: Reprocessing atomically replaces chunks for the immutable version. Completeness verifies non-empty text/chunks, contiguous order, hashes, locators, size ceilings, and plausible aggregate coverage.
 - `SECURITY_DECISION`: Scanner and OCR defaults are unconfigured and never fabricate results. Production cannot enable unscanned processing; controlled development/test fixtures may process while retaining malware `NOT_SCANNED`. OCR-required PDFs fail until a real provider exists.
+
 ## Publication and hybrid retrieval decisions
 
 - `ENGINEERING_DECISION`: Publication is serializable and row-locks the document/version, re-runs the shared readiness preflight, snapshots approved mapping IDs plus the active embedding config, then atomically switches `active_version_id`. Published mappings are immutable.
@@ -101,3 +102,13 @@
 - `CONCURRENCY_DECISION`: A PostgreSQL advisory lock serializes cache identity creation, while a durable processing token/lease prevents multiple workers rendering one TestExport. Size, SHA-256, MIME, renderer/snapshot versions, status, audit events, and download counters provide integrity and history.
 - `DEFERRED`: Custom embedded fonts/RTL shaping, logos/advanced branding, email/WhatsApp/printing delivery, student access, and cloud storage adapters.
 - `VALIDATION`: Deterministic test generation passed real PostgreSQL publication → retrieval → mixed generation → pending Question/options/citations, authorization, regeneration, cancellation-history, and insufficient-knowledge flows. No live AI call was made because an exact AI_MODEL and key are not configured.
+
+# Provider-neutral billing (2026-08-31)
+
+- No production payment provider is named by the SRS or repository, so no vendor SDK is installed and `PAYMENT_PROVIDER_DECISION_REQUIRED=true`.
+- Commercial provider state is synchronized into local subscriptions only after signature verification. Checkout/redirect state cannot activate access.
+- Individual and pooled-school provider customers use one polymorphic `(owner_type, owner_id)` billing-customer record; school checkout is restricted to a school administrator's own school.
+- Manual subscriptions remain valid with nullable provider identifiers and explicit `MANUAL` origin. Provider-managed records use `PROVIDER` origin.
+- Payment failure maps to `PAST_DUE`; cancellation-at-period-end preserves active state until a later provider cancellation/expiration event. Upgrades, downgrades, and renewals preserve usage history because usage remains period-scoped and is never reset by billing.
+- Safe normalized webhook metadata is retained for retry/audit; exact raw payloads and PCI/card data are not stored. Transaction amounts are integer minor units.
+- Reconciliation reports unavailable until a real provider capable of authoritative subscription reads is selected. The deterministic provider is local/test-only.

@@ -9,6 +9,10 @@ export enum SubscriptionStatus {
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
 }
+export enum SubscriptionOrigin {
+  MANUAL = 'MANUAL',
+  PROVIDER = 'PROVIDER',
+}
 export enum UsageMetric {
   AI_QUESTIONS = 'AI_QUESTIONS',
   TESTS = 'TESTS',

@@ -87,6 +87,16 @@ export const envSchema = Joi.object({
   EMAIL_PROVIDER: Joi.string().allow('').default(''),
   EMAIL_FROM: Joi.string().allow('').default(''),
   PAYMENT_PROVIDER: Joi.string().allow('').default(''),
+  PAYMENT_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  BILLING_SUCCESS_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:3000/billing/success'),
+  BILLING_CANCEL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:3000/billing/cancel'),
+  BILLING_PORTAL_RETURN_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:3000/settings/billing'),
 }).custom((value: Record<string, unknown>, helpers) => {
   const min = Number(value.KB_CHUNK_MIN_TOKENS);
   const target = Number(value.KB_CHUNK_TARGET_TOKENS);
@@ -107,6 +117,10 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.AI_PROVIDER === 'test')
     return helpers.error('any.invalid', {
       message: 'The deterministic test AI provider is forbidden in production',
+    });
+  if (value.APP_ENV === 'production' && value.PAYMENT_PROVIDER === 'test')
+    return helpers.error('any.invalid', {
+      message: 'The deterministic test payment provider is forbidden in production',
     });
   if (value.EMBEDDING_PROVIDER === 'openai' && value.EMBEDDING_MODEL !== 'text-embedding-3-small')
     return helpers.error('any.invalid', {

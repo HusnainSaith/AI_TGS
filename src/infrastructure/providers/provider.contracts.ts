@@ -30,7 +30,57 @@ export interface EmailProvider {
   send(input: { to: string; template: string; variables: Record<string, string> }): Promise<void>;
 }
 export const PAYMENT_PROVIDER = Symbol('PaymentProvider');
+export type BillingOwnerType = 'USER' | 'SCHOOL';
+export type NormalizedBillingEventType =
+  | 'CHECKOUT_COMPLETED'
+  | 'SUBSCRIPTION_CREATED'
+  | 'SUBSCRIPTION_ACTIVATED'
+  | 'SUBSCRIPTION_UPDATED'
+  | 'SUBSCRIPTION_RENEWED'
+  | 'SUBSCRIPTION_CANCEL_SCHEDULED'
+  | 'SUBSCRIPTION_CANCELED'
+  | 'SUBSCRIPTION_EXPIRED'
+  | 'PAYMENT_SUCCEEDED'
+  | 'PAYMENT_FAILED'
+  | 'INVOICE_PAID'
+  | 'INVOICE_PAYMENT_FAILED'
+  | 'PLAN_CHANGED'
+  | 'UNKNOWN';
+export interface BillingWebhookEvent {
+  id: string;
+  type: NormalizedBillingEventType;
+  occurredAt: Date;
+  customerId?: string;
+  subscriptionId?: string;
+  checkoutSessionId?: string;
+  priceId?: string;
+  status?: string;
+  periodStart?: Date;
+  periodEnd?: Date;
+  cancelAtPeriodEnd?: boolean;
+  transaction?: { id: string; amountMinor: number; currency: string; status: string };
+}
 export interface PaymentProvider {
-  createCheckout(input: unknown): Promise<unknown>;
-  verifyWebhook(payload: Buffer, signature: string): Promise<unknown>;
+  readonly name: string;
+  createCustomer(input: {
+    ownerType: BillingOwnerType;
+    ownerId: string;
+    email: string;
+  }): Promise<{ id: string }>;
+  createCheckoutSession(input: {
+    customerId: string;
+    priceId: string;
+    successUrl: string;
+    cancelUrl: string;
+    idempotencyKey: string;
+    metadata: Record<string, string>;
+  }): Promise<{ id: string; url: string; expiresAt: Date }>;
+  createBillingPortalSession(input: {
+    customerId: string;
+    returnUrl: string;
+  }): Promise<{ url: string }>;
+  cancelSubscription(id: string): Promise<void>;
+  changeSubscriptionPlan(id: string, priceId: string): Promise<void>;
+  getSubscription(id: string): Promise<Omit<BillingWebhookEvent, 'id' | 'type'>>;
+  verifyAndParseWebhook(payload: Buffer, signature: string): BillingWebhookEvent;
 }

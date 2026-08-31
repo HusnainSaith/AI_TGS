@@ -3,11 +3,18 @@ import { BaseEntity } from '../../../database/base.entity';
 import { User } from '../../users/user.entity';
 import { School } from '../../schools/school.entity';
 import { Plan } from './plan.entity';
-import { SubscriptionStatus } from '../subscription.enums';
+import { SubscriptionOrigin, SubscriptionStatus } from '../subscription.enums';
 @Entity('subscriptions')
 @Index(['userId'])
 @Index(['schoolId'])
 export class Subscription extends BaseEntity {
+  @Column({
+    type: 'enum',
+    enum: SubscriptionOrigin,
+    enumName: 'subscription_origin',
+    default: SubscriptionOrigin.MANUAL,
+  })
+  origin!: SubscriptionOrigin;
   @Column({ name: 'user_id', type: 'uuid', nullable: true }) userId!: string | null;
   @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
@@ -29,5 +36,7 @@ export class Subscription extends BaseEntity {
   providerCustomerId!: string | null;
   @Column({ name: 'provider_subscription_id', type: 'varchar', nullable: true, length: 120 })
   providerSubscriptionId!: string | null;
+  @Column({ name: 'provider_state_updated_at', type: 'timestamptz', nullable: true })
+  providerStateUpdatedAt!: Date | null;
   @Column({ type: 'jsonb', nullable: true }) metadata!: Record<string, unknown> | null;
 }

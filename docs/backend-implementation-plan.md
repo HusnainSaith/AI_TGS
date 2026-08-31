@@ -50,3 +50,12 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 12. Persisted Test Builder, immutable snapshots, lifecycle, preview/answer-key render models, and transactional TESTS quota. (complete; PDF deferred)
 13. Immutable question-paper/answer-key PDF rendering, secure storage/download, export history, and PDF_EXPORTS accounting. (complete)
 14. Payment adapters, webhook synchronization, and production hardening.
+
+# Billing foundation
+
+- [x] Provider-neutral contracts and deterministic signed test adapter
+- [x] Trusted plan-price mapping, billing ownership, checkout idempotency
+- [x] Raw-body signature verification and durable idempotent event processing
+- [x] Subscription synchronization, stale-event protection, transaction history
+- [x] Admin event/retry/mapping/reconciliation endpoints
+- [ ] Select and implement a production provider, then validate its sandbox

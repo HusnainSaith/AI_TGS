@@ -35,6 +35,13 @@ import { UsageLedger } from '../modules/subscriptions/entities/usage-ledger.enti
 import { ExamTest } from '../modules/tests/entities/test.entity';
 import { TestQuestion } from '../modules/tests/entities/test-question.entity';
 import { TestExport } from '../modules/test-exports/entities/test-export.entity';
+import {
+  BillingCheckoutSession,
+  BillingCustomer,
+  BillingEvent,
+  BillingTransaction,
+  PlanProviderPrice,
+} from '../modules/billing/billing.entities';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -78,6 +85,11 @@ export default new DataSource({
     ExamTest,
     TestQuestion,
     TestExport,
+    PlanProviderPrice,
+    BillingCustomer,
+    BillingCheckoutSession,
+    BillingEvent,
+    BillingTransaction,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });
