@@ -86,4 +86,11 @@ export const configuration = () => ({
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
   },
   subscription: { reservationTtlMinutes: Number(process.env.USAGE_RESERVATION_TTL_MINUTES ?? 30) },
+  pdf: {
+    renderer: 'pdf-lib',
+    renderVersion: process.env.PDF_RENDER_VERSION ?? 'test-pdf-v1',
+    maxFileSizeBytes: Number(process.env.PDF_MAX_FILE_SIZE_BYTES ?? 10485760),
+    maxQuestions: Number(process.env.PDF_MAX_QUESTIONS ?? 500),
+    storagePrefix: process.env.TEST_EXPORT_STORAGE_PREFIX ?? 'test-exports',
+  },
 });

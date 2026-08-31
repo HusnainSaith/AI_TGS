@@ -62,6 +62,12 @@ export const envSchema = Joi.object({
   AI_PROMPT_STRATEGY_VERSION: Joi.string().min(1).max(64).default('grounded-question-v1'),
   AI_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
   USAGE_RESERVATION_TTL_MINUTES: Joi.number().integer().min(1).max(10080).default(30),
+  PDF_RENDER_VERSION: Joi.string().min(1).max(64).default('test-pdf-v1'),
+  PDF_MAX_FILE_SIZE_BYTES: Joi.number().integer().min(1024).max(52428800).default(10485760),
+  PDF_MAX_QUESTIONS: Joi.number().integer().min(1).max(2000).default(500),
+  TEST_EXPORT_STORAGE_PREFIX: Joi.string()
+    .pattern(/^[a-z0-9/_-]+$/)
+    .default('test-exports'),
   EMBEDDING_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
   EMBEDDING_MODEL: Joi.string().allow('').default('text-embedding-3-small'),
   EMBEDDING_API_KEY: Joi.string().allow('').default(''),

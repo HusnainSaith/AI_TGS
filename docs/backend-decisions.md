@@ -91,4 +91,13 @@
 - `ENGINEERING_DECISION`: Draft creation/edit/clone costs zero. Finalization consumes exactly one `TESTS` unit through shared UsageService and unique `TEST_FINALIZATION` reference. Retry is idempotent, failure charges zero, archive does not refund, and school pooling uses existing entitlement resolution.
 - `CONCURRENCY_DECISION`: Mutations and finalization pessimistically lock the Test row; finalization then locks the usage counter. Finalize/add/reorder races serialize, and totals remain consistent. Position rewrites use a collision-free positive temporary range.
 - `DEFERRED`: PDF engines, generated files/storage, email/printing, and student delivery/grading.
+
+## Test PDF exports
+
+- `DOMAIN_DECISION`: Official exports require a FINALIZED Test and build exclusively from immutable TestQuestion snapshots. `TestRenderModel` has separate QUESTION_PAPER and ANSWER_KEY projections, so answer secrecy is enforced before renderer invocation.
+- `ENGINEERING_DECISION`: The renderer port is library-neutral; the MVP adapter uses the existing audited `pdf-lib` dependency. It is pure Node, needs no Chromium, performs no network fetching, produces bounded deterministic A4 pages, and stores `test-pdf-v1` as the layout contract.
+- `SECURITY_DECISION`: PDFs are private objects under opaque UUID-based keys through the existing ObjectStorageProvider. User titles influence only a sanitized download filename. Authorization precedes metadata reads and object reads; pooled subscription access never grants another teacher access to a private Test or answer key.
+- `ACCOUNTING_DECISION`: One new successfully stored QUESTION_PAPER or ANSWER_KEY artifact consumes one PDF_EXPORTS unit. Reservation occurs before rendering and settlement after signature/size validation and storage; failure releases it. Completed cache reuse and downloads consume zero additional units.
+- `CONCURRENCY_DECISION`: A PostgreSQL advisory lock serializes cache identity creation, while a durable processing token/lease prevents multiple workers rendering one TestExport. Size, SHA-256, MIME, renderer/snapshot versions, status, audit events, and download counters provide integrity and history.
+- `DEFERRED`: Custom embedded fonts/RTL shaping, logos/advanced branding, email/WhatsApp/printing delivery, student access, and cloud storage adapters.
 - `VALIDATION`: Deterministic test generation passed real PostgreSQL publication → retrieval → mixed generation → pending Question/options/citations, authorization, regeneration, cancellation-history, and insufficient-knowledge flows. No live AI call was made because an exact AI_MODEL and key are not configured.

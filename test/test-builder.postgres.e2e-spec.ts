@@ -3,8 +3,12 @@ import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { hash } from 'argon2';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DataSource, In } from 'typeorm';
+import {
+  OBJECT_STORAGE_PROVIDER,
+  ObjectStorageProvider,
+} from '../src/infrastructure/storage/object-storage.provider';
 import { UserRole } from '../src/common/enums/user-role.enum';
 import { AuthenticatedUser } from '../src/common/interfaces/authenticated-user.interface';
 import { configuration } from '../src/config/configuration';
@@ -34,12 +38,19 @@ import {
   SubscriptionStatus,
 } from '../src/modules/subscriptions/subscription.enums';
 import { SubscriptionsModule } from '../src/modules/subscriptions/subscriptions.module';
+import { TestExportType } from '../src/modules/test-exports/test-export.enums';
+import { TestExportsModule } from '../src/modules/test-exports/test-exports.module';
+import { TestExportsService } from '../src/modules/test-exports/test-exports.service';
 import { TestsModule } from '../src/modules/tests/tests.module';
 import { TestsService } from '../src/modules/tests/tests.service';
 import { User } from '../src/modules/users/user.entity';
 const run = process.env.RUN_DB_TESTS === 'true' ? describe : describe.skip;
 run('Persisted Test Builder with PostgreSQL (e2e)', () => {
-  let app: INestApplication, db: DataSource, tests: TestsService;
+  let app: INestApplication,
+    db: DataSource,
+    tests: TestsService,
+    exports: TestExportsService,
+    storage: ObjectStorageProvider;
   const id = {
     teacher: randomUUID(),
     other: randomUUID(),
@@ -69,12 +80,15 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
         AuditModule,
         SubscriptionsModule,
         TestsModule,
+        TestExportsModule,
       ],
     }).compile();
     app = ref.createNestApplication();
     await app.init();
     db = app.get(DataSource);
     tests = app.get(TestsService);
+    exports = app.get(TestExportsService);
+    storage = app.get(OBJECT_STORAGE_PROVIDER);
     const passwordHash = await hash(randomUUID());
     await db.getRepository(User).insert([
       { ...teacher, name: 'test builder teacher', passwordHash },
@@ -139,7 +153,7 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
       billingInterval: BillingInterval.MONTHLY,
       isActive: true,
       isDefault: false,
-      limits: { aiQuestionsPerPeriod: null, testsPerPeriod: 2 },
+      limits: { aiQuestionsPerPeriod: null, testsPerPeriod: 2, pdfExportsPerPeriod: 2 },
       features: {},
     });
     await db.getRepository(Subscription).insert({
@@ -163,6 +177,12 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
       await db.query(`DELETE FROM audit_logs WHERE actor_id=ANY($1::uuid[])`, [
         [id.teacher, id.other],
       ]);
+      const artifacts = await db.query(
+        `SELECT storage_key FROM test_exports WHERE requested_by=$1 AND storage_key IS NOT NULL`,
+        [id.teacher],
+      );
+      for (const artifact of artifacts) await storage.deleteObject(artifact.storage_key);
+      await db.query(`DELETE FROM test_exports WHERE requested_by=$1`, [id.teacher]);
       await db.query(`DELETE FROM usage_ledger WHERE subscription_id=$1`, [id.subscription]);
       await db.query(`DELETE FROM usage_reservations WHERE subscription_id=$1`, [id.subscription]);
       await db.query(`DELETE FROM usage_counters WHERE subscription_id=$1`, [id.subscription]);
@@ -186,7 +206,7 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
   });
   it('freezes answer snapshots, enforces ownership and consumes finalization quota once', async () => {
     const draft = await tests.create(
-      { title: 'Immutable Test', classId: id.cls, subjectId: id.subject, language: 'en' },
+      { title: '../../Immutable Test', classId: id.cls, subjectId: id.subject, language: 'en' },
       teacher,
     );
     expect(draft.status).toBe('DRAFT');
@@ -205,6 +225,32 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
       .update({ questionId: id.q1, optionOrder: 3 }, { isCorrect: true });
     const key = await tests.answerKey(draft.id, teacher);
     expect(key.questions[0]!.answer).toEqual({ correctOptionOrders: [2] });
+    const paper = await exports.create(
+      draft.id,
+      { type: TestExportType.QUESTION_PAPER },
+      teacher,
+      'paper-retry-key',
+    );
+    expect(paper).toMatchObject({ status: 'COMPLETED', mimeType: 'application/pdf' });
+    expect(paper.filename).toBe('immutable-test-question-paper.pdf');
+    const paperRetry = await exports.create(
+      draft.id,
+      { type: TestExportType.QUESTION_PAPER },
+      teacher,
+      'paper-retry-key',
+    );
+    expect(paperRetry.id).toBe(paper.id);
+    const answer = await exports.create(draft.id, { type: TestExportType.ANSWER_KEY }, teacher);
+    const downloaded = await exports.download(draft.id, paper.id, teacher);
+    expect(downloaded.buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(createHash('sha256').update(downloaded.buffer).digest('hex')).toBe(paper.sha256);
+    await exports.download(draft.id, paper.id, teacher);
+    await expect(exports.get(draft.id, answer.id, other)).rejects.toThrow('ACCESS_DENIED');
+    const [pdfCounter] = await db.query(
+      `SELECT used::int FROM usage_counters WHERE subscription_id=$1 AND metric='PDF_EXPORTS'`,
+      [id.subscription],
+    );
+    expect(pdfCounter.used).toBe(2);
     await expect(tests.add(draft.id, { questionId: id.q2 }, teacher)).rejects.toThrow('DRAFT');
     const [counter] = await db.query(
       `SELECT used::int FROM usage_counters WHERE subscription_id=$1 AND metric='TESTS'`,
@@ -254,5 +300,20 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
     );
     expect(state.status).toBe('FINALIZED');
     expect(state.total_questions).toBe(state.actual);
+    await db.query(
+      `UPDATE plans SET limits=jsonb_set(limits,'{pdfExportsPerPeriod}','3') WHERE id=$1`,
+      [id.plan],
+    );
+    const exportRace = await Promise.allSettled([
+      exports.create(draft.id, { type: TestExportType.QUESTION_PAPER }, teacher),
+      exports.create(draft.id, { type: TestExportType.QUESTION_PAPER }, teacher),
+    ]);
+    expect(exportRace.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(exportRace.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const [pdfCounter] = await db.query(
+      `SELECT used::int,reserved::int FROM usage_counters WHERE subscription_id=$1 AND metric='PDF_EXPORTS'`,
+      [id.subscription],
+    );
+    expect(pdfCounter).toEqual({ used: 3, reserved: 0 });
   });
 });

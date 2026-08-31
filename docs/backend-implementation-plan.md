@@ -48,4 +48,5 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 10. Grounded asynchronous AI generation jobs, evidence-bound prompts, strict output/citation validation, pending-review Question persistence, exact duplicate protection, and item regeneration. (complete; deterministic provider validated, live OpenAI model not configured)
 11. Entitlements, transactional usage reservation/settlement, subscriptions, and quotas. (complete)
 12. Persisted Test Builder, immutable snapshots, lifecycle, preview/answer-key render models, and transactional TESTS quota. (complete; PDF deferred)
-13. PDF rendering/storage, followed by payment adapters and hardening.
+13. Immutable question-paper/answer-key PDF rendering, secure storage/download, export history, and PDF_EXPORTS accounting. (complete)
+14. Payment adapters, webhook synchronization, and production hardening.

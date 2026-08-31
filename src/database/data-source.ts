@@ -34,6 +34,7 @@ import { UsageReservation } from '../modules/subscriptions/entities/usage-reserv
 import { UsageLedger } from '../modules/subscriptions/entities/usage-ledger.entity';
 import { ExamTest } from '../modules/tests/entities/test.entity';
 import { TestQuestion } from '../modules/tests/entities/test-question.entity';
+import { TestExport } from '../modules/test-exports/entities/test-export.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -76,6 +77,7 @@ export default new DataSource({
     UsageLedger,
     ExamTest,
     TestQuestion,
+    TestExport,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

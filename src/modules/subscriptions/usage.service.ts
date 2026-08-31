@@ -174,6 +174,55 @@ export class UsageService {
       return updated;
     });
   }
+  async settleReservation(
+    reservationId: string,
+    settledAmount: number,
+    actorId: string,
+    manager: EntityManager,
+  ) {
+    const [reservation] = await manager.query(
+      `SELECT * FROM usage_reservations WHERE id=$1 FOR UPDATE`,
+      [reservationId],
+    );
+    if (!reservation) throw new Error('USAGE_RESERVATION_NOT_FOUND');
+    if (reservation.status === ReservationStatus.SETTLED) return reservation;
+    if (reservation.status !== ReservationStatus.ACTIVE)
+      throw new Error('USAGE_RESERVATION_NOT_ACTIVE');
+    if (settledAmount < 0 || settledAmount > Number(reservation.amount))
+      throw new Error('USAGE_SETTLEMENT_EXCEEDS_RESERVATION');
+    const released = Number(reservation.amount) - settledAmount;
+    await manager.query(`SELECT id FROM usage_counters WHERE id=$1 FOR UPDATE`, [
+      reservation.usage_counter_id,
+    ]);
+    await manager.query(
+      `UPDATE usage_counters SET used=used+$2,reserved=reserved-$3,updated_at=now() WHERE id=$1`,
+      [reservation.usage_counter_id, settledAmount, Number(reservation.amount)],
+    );
+    const [updated] = await manager.query(
+      `UPDATE usage_reservations SET settled_amount=$2,released_amount=$3,status='SETTLED',settled_at=now(),released_at=CASE WHEN $3::bigint>0 THEN now() ELSE released_at END,updated_at=now() WHERE id=$1 RETURNING *`,
+      [reservation.id, settledAmount, released],
+    );
+    if (settledAmount)
+      await this.ledger(manager, reservation, UsageEventType.SETTLE, settledAmount, 'settle');
+    if (released)
+      await this.ledger(manager, reservation, UsageEventType.RELEASE, released, 'release');
+    await this.audit.record(
+      {
+        actorId,
+        action: 'usage.settle',
+        entityType: 'usage_reservation',
+        entityId: reservation.id,
+        metadata: { metric: reservation.metric, settled: settledAmount, released },
+      },
+      manager,
+    );
+    return updated;
+  }
+  async releaseReservation(reservationId: string, actorId: string) {
+    return this.data.transaction((manager) =>
+      this.settleReservation(reservationId, 0, actorId, manager),
+    );
+  }
   async settleRegeneration(itemId: string, attempt: number, actorId?: string) {
     return this.data.transaction(async (m) => {
       const type = `GENERATION_REGEN_${attempt}`;
