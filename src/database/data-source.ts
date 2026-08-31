@@ -22,6 +22,8 @@ import { ContentChunk } from '../modules/knowledge-base/entities/content-chunk.e
 import { DocumentTopicMapping } from '../modules/knowledge-base/entities/document-topic-mapping.entity';
 import { ContentChunkEmbedding } from '../modules/embeddings/entities/content-chunk-embedding.entity';
 import { EmbeddingJob } from '../modules/embeddings/entities/embedding-job.entity';
+import { RetrievalEvent } from '../modules/retrieval/entities/retrieval-event.entity';
+import { RetrievalEventChunk } from '../modules/retrieval/entities/retrieval-event-chunk.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -52,6 +54,8 @@ export default new DataSource({
     DocumentTopicMapping,
     ContentChunkEmbedding,
     EmbeddingJob,
+    RetrievalEvent,
+    RetrievalEventChunk,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

@@ -1,23 +1,23 @@
 # Backend decisions
 
-| Status               | Decision / assumption                                                                                                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CONFIRMED_FROM_SRS   | NestJS REST modular monolith, `/api/v1`, PostgreSQL + pgvector, Redis/BullMQ, UUIDs, `timestamptz`, migrations, provider abstractions.                                                        |
-| ENGINEERING_DECISION | TypeORM is the single ORM because the request prefers it and no repository convention exists. Schema synchronization is disabled.                                                             |
-| ENGINEERING_DECISION | `auth_tokens` persists only SHA-256 token digests and supports refresh rotation/reuse revocation, verification/reset expiry, logout, and logout-all.                                          |
-| ENGINEERING_DECISION | Argon2id hashes passwords. Authentication reloads user status instead of trusting token claims for authorization.                                                                             |
-| ENGINEERING_DECISION | Curriculum is global in Phase 1, matching the SRS schema. Tenant-owned private domains will require `school_id` and scoped repositories, with RLS as defence in depth.                        |
-| ENGINEERING_DECISION | Queue connections are registered only outside test mode; provider secrets remain optional until their adapter is invoked.                                                                     |
-| CONFIRMED_FROM_USER  | Global curriculum mutations are SYSTEM_ADMIN-only. SCHOOL_ADMIN and TEACHER are verified-email read-only roles. School-owned curriculum is deferred pending a coherent ownership/scope model. |
-| NEEDS_CONFIRMATION   | Whether school-less teachers may access global curriculum and KB only, and how a teacher joins/creates a school.                                                                              |
-| CONFIRMED_FROM_USER  | Login may issue tokens to unverified users, but reusable `RequireVerifiedEmail` policy protects curriculum and future normal business endpoints. Verification endpoints remain reachable.     |
-| DEFERRED             | Registration does not create a Free subscription until subscription/entitlement implementation.                                                                                               |
-| ENGINEERING_DECISION | Curriculum DELETE endpoints archive using a dedicated ACTIVE/ARCHIVED status. No curriculum hard-delete API exists; foreign keys use RESTRICT to prevent destructive tree cascades.           |
-| ENGINEERING_DECISION | Curriculum logical names are trimmed and protected by case-insensitive expression indexes within their hierarchy. Archived names remain reserved for stable historical references.            |
-| ENGINEERING_DECISION | Core relational migrations and optional RAG migrations are separate. Missing pgvector cannot block identity/curriculum development and produces an actionable error.                          |
-| NEEDS_CONFIRMATION   | Preferred payment, email, object-storage, generation-AI, and OCR providers.                                                                                                                   |
-| CONFIRMED_FROM_USER  | The MVP embedding provider/model is OpenAI `text-embedding-3-small`; the verified default output is 1,536 dimensions.                                                                         |
-| FUTURE_SCOPE         | Student workflows, multiple test versions, imports, marketplace, advanced analytics/retrieval experiments, multimodal OCR, collaboration, and offline generation.                             |
+| Status                | Decision / assumption                                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CONFIRMED_FROM_SRS    | NestJS REST modular monolith, `/api/v1`, PostgreSQL + pgvector, Redis/BullMQ, UUIDs, `timestamptz`, migrations, provider abstractions.                                                        |
+| ENGINEERING_DECISION  | TypeORM is the single ORM because the request prefers it and no repository convention exists. Schema synchronization is disabled.                                                             |
+| ENGINEERING_DECISION  | `auth_tokens` persists only SHA-256 token digests and supports refresh rotation/reuse revocation, verification/reset expiry, logout, and logout-all.                                          |
+| ENGINEERING_DECISION  | Argon2id hashes passwords. Authentication reloads user status instead of trusting token claims for authorization.                                                                             |
+| ENGINEERING_DECISION  | Curriculum is global in Phase 1, matching the SRS schema. Tenant-owned private domains will require `school_id` and scoped repositories, with RLS as defence in depth.                        |
+| ENGINEERING_DECISION  | Queue connections are registered only outside test mode; provider secrets remain optional until their adapter is invoked.                                                                     |
+| CONFIRMED_FROM_USER   | Global curriculum mutations are SYSTEM_ADMIN-only. SCHOOL_ADMIN and TEACHER are verified-email read-only roles. School-owned curriculum is deferred pending a coherent ownership/scope model. |
+| NEEDS_CONFIRMATION    | Whether school-less teachers may access global curriculum and KB only, and how a teacher joins/creates a school.                                                                              |
+| CONFIRMED_FROM_USER   | Login may issue tokens to unverified users, but reusable `RequireVerifiedEmail` policy protects curriculum and future normal business endpoints. Verification endpoints remain reachable.     |
+| DEFERRED              | Registration does not create a Free subscription until subscription/entitlement implementation.                                                                                               |
+| ENGINEERING_DECISION  | Curriculum DELETE endpoints archive using a dedicated ACTIVE/ARCHIVED status. No curriculum hard-delete API exists; foreign keys use RESTRICT to prevent destructive tree cascades.           |
+| ENGINEERING_DECISION  | Curriculum logical names are trimmed and protected by case-insensitive expression indexes within their hierarchy. Archived names remain reserved for stable historical references.            |
+| ENGINEERING_DECISION  | Core relational migrations and optional RAG migrations are separate. Missing pgvector cannot block identity/curriculum development and produces an actionable error.                          |
+| NEEDS_CONFIRMATION    | Preferred payment, email, object-storage, AI, embedding, OCR, and malware-scanning providers.                                                                                                 |
+| DEFERRED_TO_RAG_PHASE | Embedding dimensionality (`vector(n)`) and model migration strategy require a selected embedding provider/model.                                                                              |
+| FUTURE_SCOPE          | Student workflows, multiple test versions, imports, marketplace, advanced analytics/retrieval experiments, multimodal OCR, collaboration, and offline generation.                             |
 
 ## Manual Question Bank decisions
 
@@ -54,33 +54,14 @@
 - `ENGINEERING_DECISION`: Successful extraction sets DocumentVersion `COMPLETED`, KnowledgeDocument `READY_FOR_MAPPING`, and the broad pipeline job `AWAITING_MAPPING`. Mapping, embedding, publication, and retrieval have not occurred.
 - `ENGINEERING_DECISION`: Reprocessing atomically replaces chunks for the immutable version. Completeness verifies non-empty text/chunks, contiguous order, hashes, locators, size ceilings, and plausible aggregate coverage.
 - `SECURITY_DECISION`: Scanner and OCR defaults are unconfigured and never fabricate results. Production cannot enable unscanned processing; controlled development/test fixtures may process while retaining malware `NOT_SCANNED`. OCR-required PDFs fail until a real provider exists.
+## Publication and hybrid retrieval decisions
 
-## Curriculum mapping and review decisions
-
-- `ENGINEERING_DECISION`: `document_topic_mappings` stores whole-version, contiguous partial Board-to-Topic paths. Range mapping is deferred; curriculum IDs are not copied onto derived chunks.
-- `ENGINEERING_DECISION`: Specificity is derived deterministically (Board 1 through Topic 5), with reusable containment and most-specific selection logic.
-- `ENGINEERING_DECISION`: A PostgreSQL expression unique index normalizes nullable path IDs with the nil UUID and excludes ARCHIVED rows, preventing concurrent duplicates without depending on `NULLS NOT DISTINCT` support.
-- `SECURITY_DECISION`: GLOBAL mappings are mutable only by SYSTEM_ADMIN. SCHOOL mappings are mutable by SYSTEM_ADMIN moderation or same-school SCHOOL_ADMIN; mapping, preview, and coverage queries scope through Version -> Document in SQL.
-- `ENGINEERING_DECISION`: Mapping states are DRAFT, PENDING_REVIEW, APPROVED, REJECTED, and ARCHIVED. Approval records server-derived actor/time; rejection and archival preserve history.
-- `ENGINEERING_DECISION`: Review readiness requires completed extraction/completeness, chunks, confirmed rights, and an approved active-curriculum mapping. Publication additionally requires CLEAN malware/OCR gates and real model-versioned embeddings. Embeddings do not exist, so publication remains blocked.
-- `ENGINEERING_DECISION`: Coverage counts approved mapped processed source metadata with SQL tenant isolation. It is not semantic coverage, RAG readiness, or retrieval quality.
-
-## Malware scanning decisions
-
-- `SECURITY_DECISION`: `none` never returns CLEAN. `windows_defender` is the only concrete adapter and requires an explicit executable path. No operating-system software is installed automatically.
-- `SECURITY_DECISION`: Quarantined bytes are obtained through `ObjectStorageProvider`, written under a randomized OS temporary directory, scanned using an argument array with remediation disabled, and deleted in `finally`. Paths and raw scanner logs are not exposed.
-- `ENGINEERING_DECISION`: Document versions persist scanner provider, scan time, bounded metadata, and stable error code. State transitions are NOT_SCANNED/FAILED -> SCANNING -> CLEAN|INFECTED|FAILED. CLEAN is idempotent; INFECTED cannot automatically retry.
-- `SECURITY_DECISION`: Production extraction requires CLEAN. The unscanned override defaults false, is rejected in production, is explicit in development/test, is recorded in job metrics, and never bypasses publication preflight.
-- `ENGINEERING_DECISION`: Approved mappings remain historical when infection is discovered. Publication is blocked distinctly by NOT_SCANNED, FAILED, or INFECTED, and remains blocked by EMBEDDINGS_MISSING even after CLEAN.
-- `VALIDATION`: Windows Defender was locally available and returned CLEAN for a harmless `package.json`. Core migrations and all database E2E suites passed against local PostgreSQL.
-
-## Embedding foundation decisions
-
-- `CONFIRMED_FROM_OFFICIAL_DOCS`: `text-embedding-3-small` defaults to 1,536 dimensions, supports the `dimensions` request parameter, accepts array inputs, returns prompt/total token usage, and recommends cosine similarity. The MVP uses the unmodified default and cosine.
-- `ENGINEERING_DECISION`: pgvector 0.8.6 and all embedding tables live only in the independent RAG migration chain. `content_chunk_embeddings` is separate from `content_chunks`, so inactive generations remain available for evaluation/rollback.
-- `ENGINEERING_DECISION`: The deterministic configuration version hashes provider, model, dimension, metric, and preprocessing version. A future incompatible dimension uses a new forward RAG migration/table or dimension-specific column generation; it is never inserted into `vector(1536)`.
-- `ENGINEERING_DECISION`: No HNSW/IVFFlat index is created during storage foundation. Exact technical operators are tested; index selection and tuning belong to measured retrieval work.
-- `ENGINEERING_DECISION`: PostgreSQL jobs use atomic claims, UUID tokens, expiring leases, bounded retry, and short persistence transactions. External API calls occur outside transactions. Valid chunk/config/hash rows are idempotently skipped.
-- `SECURITY_DECISION`: CLEAN scanning, completed extraction, non-archived content, and non-empty chunks are mandatory. Mapping is an independent branch; publication requires both branches but is not automatically activated.
-- `SECURITY_DECISION`: The OpenAI key stays in environment configuration. Status, Swagger, health, errors, audit events, and job metadata exclude keys, raw vectors, authorization headers, and full source chunks. The deterministic adapter cannot start in production.
-- `DEFERRED`: ANN indexing, hybrid retrieval, FTS ranking, reranking, RetrievalEvent, QuestionCitation, RAG prompting, and AI question generation.
+- `ENGINEERING_DECISION`: Publication is serializable and row-locks the document/version, re-runs the shared readiness preflight, snapshots approved mapping IDs plus the active embedding config, then atomically switches `active_version_id`. Published mappings are immutable.
+- `ENGINEERING_DECISION`: New retrieval uses only the logical document's active published version. Archived documents/versions immediately leave new candidate sets; historical RetrievalEvent evidence remains retained.
+- `ENGINEERING_DECISION`: Retrieval-specific FTS and provenance schema lives in the independent RAG migration chain. English uses an `english` generated tsvector; other languages use `simple`.
+- `ENGINEERING_DECISION`: Vector score means cosine similarity (`1 - pgvector cosine distance`). Keyword score is `ts_rank_cd / (ts_rank_cd + 1)`. `hybrid-v1` normalizes configured weights and combines both scores.
+- `ENGINEERING_DECISION`: Tenant, publication, active-version, approved-mapping, curriculum, language, document selection, active embedding config/status/hash, and CLEAN/extraction predicates execute before bounded vector/keyword candidate scoring.
+- `ENGINEERING_DECISION`: Exact content hashes are unique per result. Highly-overlapping adjacent chunks from one version are suppressed at an 0.8 token-set overlap threshold; useful adjacent evidence remains eligible.
+- `ENGINEERING_DECISION`: Context packing preserves rank and whole chunks within the evidence token budget and assigns stable `SRC_1...SRC_n` labels. It never truncates content.
+- `ENGINEERING_DECISION`: RetrievalEventChunk is normalized rather than JSON-only, retaining immutable rank, scores, content hash, and locator snapshot for later citation linkage.
+- `DEFERRED`: ANN indexes, reranking, prompt construction, generation jobs, QuestionCitation, and AI question generation.

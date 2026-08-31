@@ -61,6 +61,15 @@ export const envSchema = Joi.object({
   EMBEDDING_BATCH_SIZE: Joi.number().integer().min(1).max(2048).default(32),
   EMBEDDING_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(30000),
   EMBEDDING_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
+  RAG_TOP_K: Joi.number().integer().min(1).max(50).default(12),
+  RAG_MAX_TOP_K: Joi.number().integer().min(1).max(50).default(50),
+  RAG_MIN_SIMILARITY: Joi.number().min(0).max(1).default(0.35),
+  RAG_VECTOR_WEIGHT: Joi.number().min(0).default(0.7),
+  RAG_KEYWORD_WEIGHT: Joi.number().min(0).default(0.3),
+  RAG_VECTOR_CANDIDATE_K: Joi.number().integer().min(1).max(500).default(40),
+  RAG_KEYWORD_CANDIDATE_K: Joi.number().integer().min(1).max(500).default(40),
+  RAG_CONTEXT_BUDGET_TOKENS: Joi.number().integer().min(100).max(50000).default(6000),
+  RAG_RETRIEVAL_STRATEGY_VERSION: Joi.string().min(1).max(64).default('hybrid-v1'),
   EMAIL_PROVIDER: Joi.string().allow('').default(''),
   EMAIL_FROM: Joi.string().allow('').default(''),
   PAYMENT_PROVIDER: Joi.string().allow('').default(''),
@@ -85,5 +94,9 @@ export const envSchema = Joi.object({
     return helpers.error('any.invalid', {
       message: 'The active MVP OpenAI embedding model must be text-embedding-3-small',
     });
+  if (Number(value.RAG_VECTOR_WEIGHT) + Number(value.RAG_KEYWORD_WEIGHT) <= 0)
+    return helpers.error('any.invalid', { message: 'Retrieval weights cannot both be zero' });
+  if (Number(value.RAG_TOP_K) > Number(value.RAG_MAX_TOP_K))
+    return helpers.error('any.invalid', { message: 'RAG_TOP_K cannot exceed RAG_MAX_TOP_K' });
   return value;
 });

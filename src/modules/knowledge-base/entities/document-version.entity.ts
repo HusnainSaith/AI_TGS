@@ -56,6 +56,15 @@ export class DocumentVersion extends BaseEntity {
   @Column({ name: 'malware_error_code', type: 'varchar', length: 80, nullable: true })
   malwareErrorCode!: string | null;
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true }) publishedAt!: Date | null;
+  @Column({
+    name: 'publication_embedding_config_version',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  publicationEmbeddingConfigVersion!: string | null;
+  @Column({ name: 'publication_mapping_snapshot', type: 'jsonb', nullable: true })
+  publicationMappingSnapshot!: { mappingIds: string[]; publishedAt: string } | null;
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true }) archivedAt!: Date | null;
   @OneToMany(() => IngestionJob, (j) => j.documentVersion) ingestionJobs!: IngestionJob[];
   @OneToMany(() => ContentChunk, (c) => c.documentVersion) chunks!: ContentChunk[];

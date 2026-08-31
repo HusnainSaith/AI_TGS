@@ -26,6 +26,8 @@ import {
 import { KnowledgeReadinessService } from './knowledge-readiness.service';
 import { mappingSpecificity } from './mapping-specificity';
 import { CurriculumMappingValidator } from './curriculum-mapping-validator.service';
+import { PublicationPreflightService } from './publication-preflight.service';
+import { EmbeddingConfigService } from '../embeddings/embedding-config.service';
 
 @Injectable()
 export class DocumentMappingsService {
@@ -37,6 +39,8 @@ export class DocumentMappingsService {
     private data: DataSource,
     private validator: CurriculumMappingValidator,
     private readiness: KnowledgeReadinessService,
+    private preflight: PublicationPreflightService,
+    private embeddingConfig: EmbeddingConfigService,
     private audit: AuditService,
   ) {}
   private scope<T>(qb: SelectQueryBuilder<T & object>, user: AuthenticatedUser) {
@@ -100,6 +104,7 @@ export class DocumentMappingsService {
     this.assertMutate(v, user);
     if (v.document.status === KnowledgeDocumentStatus.ARCHIVED || v.archivedAt)
       throw new ConflictException('Archived content cannot be mapped');
+    if (v.publishedAt) throw new ConflictException('Published mapping snapshots are immutable');
     if (
       v.extractionStatus !== ExtractionStatus.COMPLETED ||
       ![
@@ -170,6 +175,8 @@ export class DocumentMappingsService {
   async transition(id: string, next: MappingStatus, user: AuthenticatedUser, reason?: string) {
     const m = await this.mapping(id, user);
     this.assertMutate(m.documentVersion, user);
+    if (m.documentVersion.publishedAt)
+      throw new ConflictException('Published mapping snapshots are immutable');
     if (next === MappingStatus.PENDING_REVIEW || next === MappingStatus.APPROVED)
       await this.validator.validate(m);
     const allowed: Record<MappingStatus, MappingStatus[]> = {
@@ -267,7 +274,7 @@ export class DocumentMappingsService {
   async publish(versionId: string, user: AuthenticatedUser) {
     const v = await this.version(versionId, user);
     this.assertMutate(v, user);
-    const r = await this.readiness.evaluate(v);
+    const r = await this.preflight.evaluate(v);
     await this.audit.record({
       actorId: user.id,
       action: 'kb.publication.preflight',
@@ -290,7 +297,73 @@ export class DocumentMappingsService {
         readiness: r.publicationBlockers,
       });
     }
-    throw new ConflictException('Publication is not enabled in this phase');
+    return this.data.transaction('SERIALIZABLE', async (manager) => {
+      const locked = await manager
+        .getRepository(DocumentVersion)
+        .createQueryBuilder('version')
+        .innerJoinAndSelect('version.document', 'document')
+        .where('version.id=:versionId', { versionId })
+        .setLock('pessimistic_write')
+        .getOneOrFail();
+      await manager
+        .getRepository(KnowledgeDocument)
+        .createQueryBuilder('document')
+        .where('document.id=:id', { id: locked.documentId })
+        .setLock('pessimistic_write')
+        .getOneOrFail();
+      if (locked.publishedAt && locked.document.activeVersionId === locked.id)
+        return {
+          documentId: locked.documentId,
+          documentVersionId: locked.id,
+          publishedAt: locked.publishedAt,
+        };
+      if (locked.document.status !== KnowledgeDocumentStatus.READY_FOR_REVIEW)
+        throw new ConflictException('Document version must be READY_FOR_REVIEW before publication');
+      const current = await this.preflight.evaluate(locked, manager);
+      if (!current.publicationReady)
+        throw new ConflictException({
+          message: 'Publication preflight blocked',
+          readiness: current.publicationBlockers,
+        });
+      const approved = await manager.getRepository(DocumentTopicMapping).find({
+        where: { documentVersionId: locked.id, status: MappingStatus.APPROVED },
+        order: { id: 'ASC' },
+      });
+      const active = this.embeddingConfig.active();
+      const publishedAt = new Date();
+      await manager.getRepository(DocumentVersion).update(locked.id, {
+        publishedAt,
+        publicationEmbeddingConfigVersion: active.configVersion,
+        publicationMappingSnapshot: {
+          mappingIds: approved.map((item) => item.id),
+          publishedAt: publishedAt.toISOString(),
+        },
+      });
+      await manager.getRepository(KnowledgeDocument).update(locked.documentId, {
+        activeVersionId: locked.id,
+        status: KnowledgeDocumentStatus.PUBLISHED,
+      });
+      await this.audit.record(
+        {
+          actorId: user.id,
+          action: 'kb.publication.publish',
+          entityType: 'document_version',
+          entityId: locked.id,
+          metadata: {
+            documentId: locked.documentId,
+            embeddingConfigVersion: active.configVersion,
+            mappingIds: approved.map((item) => item.id),
+          },
+        },
+        manager,
+      );
+      return {
+        documentId: locked.documentId,
+        documentVersionId: locked.id,
+        publishedAt,
+        activeVersionId: locked.id,
+      };
+    });
   }
   async preview(versionId: string, user: AuthenticatedUser) {
     const v = await this.version(versionId, user);

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { CurriculumStatus } from '../curriculum/curriculum-status.enum';
 import { EmbeddingConfigService } from '../embeddings/embedding-config.service';
 import { EmbeddingStatus } from '../embeddings/embedding.enums';
@@ -34,7 +34,10 @@ export class KnowledgeReadinessService {
     private embeddings: Repository<ContentChunkEmbedding>,
     private embeddingConfig: EmbeddingConfigService,
   ) {}
-  async evaluate(version: DocumentVersion): Promise<ReadinessResult> {
+  async evaluate(version: DocumentVersion, manager?: EntityManager): Promise<ReadinessResult> {
+    const chunksRepository = manager?.getRepository(ContentChunk) ?? this.chunks;
+    const mappingsRepository = manager?.getRepository(DocumentTopicMapping) ?? this.mappings;
+    const embeddingsRepository = manager?.getRepository(ContentChunkEmbedding) ?? this.embeddings;
     const mapping: ReadinessBlocker[] = [];
     const review: ReadinessBlocker[] = [];
     if (version.document.status === KnowledgeDocumentStatus.ARCHIVED)
@@ -42,11 +45,11 @@ export class KnowledgeReadinessService {
     if (version.archivedAt) mapping.push(ReadinessBlocker.VERSION_ARCHIVED);
     if (version.extractionStatus !== ExtractionStatus.COMPLETED)
       mapping.push(ReadinessBlocker.EXTRACTION_NOT_COMPLETE);
-    const count = await this.chunks.countBy({ documentVersionId: version.id });
+    const count = await chunksRepository.countBy({ documentVersionId: version.id });
     if (!count) mapping.push(ReadinessBlocker.NO_CONTENT_CHUNKS);
     if (version.document.rightsMetadata.permissionConfirmed !== true)
       review.push(ReadinessBlocker.RIGHTS_NOT_CONFIRMED);
-    const all = await this.mappings
+    const all = await mappingsRepository
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.board', 'board')
       .leftJoinAndSelect('m.curriculumClass', 'class')
@@ -84,7 +87,7 @@ export class KnowledgeReadinessService {
     const active = this.embeddingConfig.active();
     if (!active.configured) publication.push(ReadinessBlocker.EMBEDDING_PROVIDER_NOT_CONFIGURED);
     try {
-      const rows = await this.embeddings
+      const rows = await embeddingsRepository
         .createQueryBuilder('embedding')
         .innerJoin(ContentChunk, 'chunk', 'chunk.id=embedding.contentChunkId')
         .where('chunk.documentVersionId=:id', { id: version.id })
@@ -93,7 +96,7 @@ export class KnowledgeReadinessService {
         (row) =>
           row.embeddingConfigVersion === active.configVersion && row.dimension === active.dimension,
       );
-      const chunks = await this.chunks.findBy({ documentVersionId: version.id });
+      const chunks = await chunksRepository.findBy({ documentVersionId: version.id });
       const chunkHashes = new Map(chunks.map((chunk) => [chunk.id, chunk.contentHash]));
       const completed = activeRows.filter(
         (row) =>

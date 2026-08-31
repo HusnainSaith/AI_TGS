@@ -20,6 +20,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { EmbeddingsModule } from './modules/embeddings/embeddings.module';
+import { RetrievalModule } from './modules/retrieval/retrieval.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -41,6 +42,7 @@ import { EmbeddingsModule } from './modules/embeddings/embeddings.module';
     KnowledgeBaseModule,
     IngestionModule,
     EmbeddingsModule,
+    RetrievalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

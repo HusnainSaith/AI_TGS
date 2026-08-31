@@ -79,6 +79,10 @@ export class EmbeddingService {
   private assertEligible(version: DocumentVersion, count: number) {
     if (version.document.status === KnowledgeDocumentStatus.ARCHIVED || version.archivedAt)
       throw new ConflictException('Archived content cannot be embedded');
+    if (version.publishedAt)
+      throw new ConflictException(
+        'Published version evidence is immutable; create a new Document Version to re-embed content',
+      );
     if (version.malwareScanStatus !== MalwareScanStatus.CLEAN)
       throw new ConflictException(
         version.malwareScanStatus === MalwareScanStatus.INFECTED

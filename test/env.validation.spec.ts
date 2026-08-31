@@ -56,4 +56,14 @@ describe('environment validation', () => {
       }).error,
     ).toBeDefined();
   });
+  it('validates hybrid retrieval weights and bounded topK', () => {
+    const base = { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) };
+    expect(
+      envSchema.validate({ ...base, RAG_VECTOR_WEIGHT: 0, RAG_KEYWORD_WEIGHT: 0 }).error,
+    ).toBeDefined();
+    expect(envSchema.validate({ ...base, RAG_TOP_K: 20, RAG_MAX_TOP_K: 10 }).error).toBeDefined();
+    expect(
+      envSchema.validate({ ...base, RAG_VECTOR_WEIGHT: 0.7, RAG_KEYWORD_WEIGHT: 0.3 }).error,
+    ).toBeUndefined();
+  });
 });

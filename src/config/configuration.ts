@@ -62,4 +62,15 @@ export const configuration = () => ({
     timeoutMs: Number(process.env.EMBEDDING_TIMEOUT_MS ?? 30000),
     staleMinutes: Number(process.env.EMBEDDING_STALE_MINUTES ?? 15),
   },
+  retrieval: {
+    topK: Number(process.env.RAG_TOP_K ?? 12),
+    maxTopK: Number(process.env.RAG_MAX_TOP_K ?? 50),
+    minSimilarity: Number(process.env.RAG_MIN_SIMILARITY ?? 0.35),
+    vectorWeight: Number(process.env.RAG_VECTOR_WEIGHT ?? 0.7),
+    keywordWeight: Number(process.env.RAG_KEYWORD_WEIGHT ?? 0.3),
+    vectorCandidateK: Number(process.env.RAG_VECTOR_CANDIDATE_K ?? 40),
+    keywordCandidateK: Number(process.env.RAG_KEYWORD_CANDIDATE_K ?? 40),
+    contextBudgetTokens: Number(process.env.RAG_CONTEXT_BUDGET_TOKENS ?? 6000),
+    strategyVersion: process.env.RAG_RETRIEVAL_STRATEGY_VERSION ?? 'hybrid-v1',
+  },
 });

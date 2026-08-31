@@ -234,6 +234,17 @@ export class KnowledgeBaseService {
         },
         manager,
       );
+      if (d.activeVersionId)
+        await this.audit.record(
+          {
+            actorId: user.id,
+            action: 'kb.publication.archive',
+            entityType: 'document_version',
+            entityId: d.activeVersionId,
+            metadata: { documentId: id },
+          },
+          manager,
+        );
     });
   }
   async upload(id: string, file: UploadedFile | undefined, user: AuthenticatedUser) {

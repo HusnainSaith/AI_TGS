@@ -44,6 +44,6 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 6. Curriculum mapping, review readiness, preview, metadata coverage, and guarded publication preflight. (complete; publication blocked honestly)
 7. Integrate real malware scanning with persistent states and production gate. (Windows Defender complete; OCR deferred)
 8. Implement embeddings/pgvector and guarded publication preflight. (embedding foundation complete; activation remains deferred)
-9. Implement hybrid retrieval with PostgreSQL FTS, pgvector cosine similarity, curriculum/tenant filters, context packing, and RetrievalEvents.
+9. Implement atomic publication and hybrid retrieval with PostgreSQL FTS, pgvector cosine similarity, curriculum/tenant filters, context packing, and RetrievalEvents. (implementation complete; local pgvector migration validation blocked until extension installation)
 10. Entitlements/usage, then grounded AI jobs and duplicate detection.
 11. Test builder/PDF, followed by payment adapters and hardening.
