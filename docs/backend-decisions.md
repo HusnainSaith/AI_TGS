@@ -1,0 +1,56 @@
+# Backend decisions
+
+| Status                | Decision / assumption                                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CONFIRMED_FROM_SRS    | NestJS REST modular monolith, `/api/v1`, PostgreSQL + pgvector, Redis/BullMQ, UUIDs, `timestamptz`, migrations, provider abstractions.                                                        |
+| ENGINEERING_DECISION  | TypeORM is the single ORM because the request prefers it and no repository convention exists. Schema synchronization is disabled.                                                             |
+| ENGINEERING_DECISION  | `auth_tokens` persists only SHA-256 token digests and supports refresh rotation/reuse revocation, verification/reset expiry, logout, and logout-all.                                          |
+| ENGINEERING_DECISION  | Argon2id hashes passwords. Authentication reloads user status instead of trusting token claims for authorization.                                                                             |
+| ENGINEERING_DECISION  | Curriculum is global in Phase 1, matching the SRS schema. Tenant-owned private domains will require `school_id` and scoped repositories, with RLS as defence in depth.                        |
+| ENGINEERING_DECISION  | Queue connections are registered only outside test mode; provider secrets remain optional until their adapter is invoked.                                                                     |
+| CONFIRMED_FROM_USER   | Global curriculum mutations are SYSTEM_ADMIN-only. SCHOOL_ADMIN and TEACHER are verified-email read-only roles. School-owned curriculum is deferred pending a coherent ownership/scope model. |
+| NEEDS_CONFIRMATION    | Whether school-less teachers may access global curriculum and KB only, and how a teacher joins/creates a school.                                                                              |
+| CONFIRMED_FROM_USER   | Login may issue tokens to unverified users, but reusable `RequireVerifiedEmail` policy protects curriculum and future normal business endpoints. Verification endpoints remain reachable.     |
+| DEFERRED              | Registration does not create a Free subscription until subscription/entitlement implementation.                                                                                               |
+| ENGINEERING_DECISION  | Curriculum DELETE endpoints archive using a dedicated ACTIVE/ARCHIVED status. No curriculum hard-delete API exists; foreign keys use RESTRICT to prevent destructive tree cascades.           |
+| ENGINEERING_DECISION  | Curriculum logical names are trimmed and protected by case-insensitive expression indexes within their hierarchy. Archived names remain reserved for stable historical references.            |
+| ENGINEERING_DECISION  | Core relational migrations and optional RAG migrations are separate. Missing pgvector cannot block identity/curriculum development and produces an actionable error.                          |
+| NEEDS_CONFIRMATION    | Preferred payment, email, object-storage, AI, embedding, OCR, and malware-scanning providers.                                                                                                 |
+| DEFERRED_TO_RAG_PHASE | Embedding dimensionality (`vector(n)`) and model migration strategy require a selected embedding provider/model.                                                                              |
+| FUTURE_SCOPE          | Student workflows, multiple test versions, imports, marketplace, advanced analytics/retrieval experiments, multimodal OCR, collaboration, and offline generation.                             |
+
+## Manual Question Bank decisions
+
+- `ENGINEERING_DECISION`: Public creation always stamps `MANUAL`, `APPROVED`, `NOT_APPLICABLE`, nullable generation/retrieval references, and server-derived ownership. Future AI uses the same tables through an internal path.
+- `ENGINEERING_DECISION`: TRUE_FALSE uses exactly two `TRUE`/`FALSE` option rows with one correct row. Transactional domain validation enforces cross-row cardinality; PostgreSQL enforces row shape and unique order.
+- `ENGINEERING_DECISION`: FILL_BLANK expected/model answers use nullable `explanation`; no multi-answer engine is introduced.
+- `ENGINEERING_DECISION`: Teachers access only their own bank. SCHOOL_ADMIN receives no implicit private-bank visibility; sharing awaits an explicit Phase 2 ownership model. SYSTEM_ADMIN has moderation scope.
+- `ENGINEERING_DECISION`: Question DELETE archives. Curriculum FKs use RESTRICT; option CASCADE is limited to controlled child replacement/future physical cleanup.
+- `ENGINEERING_DECISION`: Exact duplicates are rejected per owner and active Topic after whitespace/case normalization. Similarity checks remain deferred.
+- `ENGINEERING_DECISION`: Section is test/generation context and is not stored on Question. Topic remains the smallest content scope.
+- `ENGINEERING_DECISION`: Search currently uses parameterized ILIKE across question content and bounded curriculum joins. PostgreSQL FTS optimization is deferred until justified by measured volume.
+
+## Knowledge Base secure-source decisions
+
+- `ENGINEERING_DECISION`: Metadata creation and immutable multipart version upload are separate. `active_version_id` means the published retrieval version and remains null until a future guarded publication workflow exists.
+- `ENGINEERING_DECISION`: SYSTEM_ADMIN creates GLOBAL sources; SCHOOL_ADMIN creates/manages only SCHOOL sources for its authenticated school. Teachers are read-only. Queries apply GLOBAL/current-school scope before returning documents, versions, or jobs.
+- `ENGINEERING_DECISION`: Rights JSONB requires `permissionConfirmed: true` and a source owner at DTO level; PostgreSQL also enforces the attestation. PATCH cannot alter scope, school, creator, active version, or lifecycle.
+- `ENGINEERING_DECISION`: The local provider writes generated UUID keys below `quarantine/<scope>/...`; normalized path checks prevent root escape. Quarantine is not statically served.
+- `ENGINEERING_DECISION`: PDF uses `%PDF-`; DOCX requires ZIP and OOXML markers; TXT rejects NUL/binary-heavy content and common executable headers. This is spoofing validation, not parsing or malware scanning.
+- `ENGINEERING_DECISION`: SHA-256 identifies bytes. A unique constraint rejects the same checksum within one logical document; duplicates across authorized documents/tenants remain allowed.
+- `ENGINEERING_DECISION`: A per-document PostgreSQL advisory transaction lock serializes version numbering. If the database transaction fails after storage succeeds, compensating deletion removes the object.
+- `ENGINEERING_DECISION`: Uploads create `QUEUED` jobs at `SIGNATURE_VALIDATION`, extraction `PENDING`, malware `NOT_SCANNED`, and `queueDispatched:false`. Redis is optional; retry is FAILED-only and capped at three.
+- `DEFERRED`: ADMIN_NOTE content ingestion, raw download, real scanner/OCR adapters, embeddings, mappings, publication, and retrieval.
+
+## Knowledge ingestion processing decisions
+
+- `ENGINEERING_DECISION`: `IngestionProcessorService.processJob` is the single processing implementation for the administrative no-Redis endpoint and future BullMQ workers. PostgreSQL atomically claims QUEUED or stale PROCESSING jobs with a UUID lease token; final persistence requires the same token.
+- `ENGINEERING_DECISION`: `pdfjs-dist` provides public page APIs and preserves real PDF page numbers. A PDF is OCR-required when it has no text or its below-threshold page ratio exceeds `KB_PDF_MAX_EMPTY_PAGE_RATIO`.
+- `ENGINEERING_DECISION`: Mammoth's stable HTML conversion preserves DOCX headings and ordered paragraphs. Its HTML is never served; text is decoded into `DOCX_PARAGRAPH` locators. DOCX page numbers are never invented.
+- `ENGINEERING_DECISION`: UTF-8 TXT extraction normalizes line endings and preserves deterministic `TEXT_LINES` ranges. NUL or invalid UTF-8 input fails safely.
+- `ENGINEERING_DECISION`: Conservative normalization uses NFC, removes non-meaningful controls, normalizes line endings/horizontal whitespace, and collapses excessive blank lines without paraphrasing.
+- `ENGINEERING_DECISION`: Chunking groups source blocks toward a configurable token-estimate target, splits oversized blocks only at words, carries bounded overlap, and preserves merged source locators. SHA-256 hashes normalized content; ordering begins at one and is database-unique per version.
+- `ENGINEERING_DECISION`: Token counts use `ceil(characters / 4)` as an explicitly approximate, provider-neutral estimate until an embedding/LLM tokenizer is selected.
+- `ENGINEERING_DECISION`: Successful extraction sets DocumentVersion `COMPLETED`, KnowledgeDocument `READY_FOR_MAPPING`, and the broad pipeline job `AWAITING_MAPPING`. Mapping, embedding, publication, and retrieval have not occurred.
+- `ENGINEERING_DECISION`: Reprocessing atomically replaces chunks for the immutable version. Completeness verifies non-empty text/chunks, contiguous order, hashes, locators, size ceilings, and plausible aggregate coverage.
+- `SECURITY_DECISION`: Scanner and OCR defaults are unconfigured and never fabricate results. Production cannot enable unscanned processing; controlled development/test fixtures may process while retaining malware `NOT_SCANNED`. OCR-required PDFs fail until a real provider exists.

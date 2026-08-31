@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+logs/
+tmp/
+uploads/
+storage/
+*.log
+.idea/
+.vscode/

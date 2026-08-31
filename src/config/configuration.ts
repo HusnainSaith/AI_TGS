@@ -1,0 +1,53 @@
+export const configuration = () => ({
+  app: {
+    env: process.env.APP_ENV ?? 'development',
+    port: Number(process.env.PORT ?? 3000),
+    prefix: process.env.API_PREFIX ?? 'api/v1',
+    corsOrigins: (process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+    swagger: process.env.SWAGGER_ENABLED !== 'false',
+    trustProxy: process.env.TRUST_PROXY === 'true',
+  },
+  database: {
+    host: process.env.DATABASE_HOST,
+    port: Number(process.env.DATABASE_PORT),
+    name: process.env.DATABASE_NAME,
+    user: process.env.DATABASE_USER,
+    password: process.env.DATABASE_PASSWORD,
+    ssl: process.env.DATABASE_SSL === 'true',
+  },
+  redis: {
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT),
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+  storage: {
+    provider: process.env.STORAGE_PROVIDER ?? 'local',
+    localRoot: process.env.STORAGE_LOCAL_ROOT ?? './storage',
+  },
+  knowledgeBase: {
+    maxFileSizeBytes: Number(process.env.KB_MAX_FILE_SIZE_MB ?? 20) * 1024 * 1024,
+    allowedMimeTypes: (
+      process.env.KB_ALLOWED_MIME_TYPES ??
+      'application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain'
+    )
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  },
+  ingestion: {
+    chunkTargetTokens: Number(process.env.KB_CHUNK_TARGET_TOKENS ?? 500),
+    chunkMaxTokens: Number(process.env.KB_CHUNK_MAX_TOKENS ?? 750),
+    chunkMinTokens: Number(process.env.KB_CHUNK_MIN_TOKENS ?? 80),
+    chunkOverlapTokens: Number(process.env.KB_CHUNK_OVERLAP_TOKENS ?? 50),
+    pdfMinTextCharsPerPage: Number(process.env.KB_PDF_MIN_TEXT_CHARS_PER_PAGE ?? 30),
+    pdfMaxEmptyPageRatio: Number(process.env.KB_PDF_MAX_EMPTY_PAGE_RATIO ?? 0.6),
+    staleMinutes: Number(process.env.KB_INGESTION_STALE_MINUTES ?? 15),
+    allowUnscannedProcessing:
+      process.env.APP_ENV !== 'production' && process.env.KB_ALLOW_UNSCANNED_PROCESSING !== 'false',
+    ocrProvider: process.env.OCR_PROVIDER ?? 'none',
+    malwareScannerProvider: process.env.MALWARE_SCANNER_PROVIDER ?? 'none',
+  },
+});
