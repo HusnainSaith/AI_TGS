@@ -51,9 +51,16 @@ export const envSchema = Joi.object({
   OBJECT_STORAGE_BUCKET: Joi.string().allow('').default(''),
   OBJECT_STORAGE_REGION: Joi.string().allow('').default(''),
   OBJECT_STORAGE_ENDPOINT: Joi.string().allow('').default(''),
-  AI_PROVIDER: Joi.string().allow('').default(''),
+  AI_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
   AI_MODEL: Joi.string().allow('').default(''),
   AI_API_KEY: Joi.string().allow('').default(''),
+  AI_TEMPERATURE: Joi.number().min(0).max(2).default(0.2),
+  AI_MAX_OUTPUT_TOKENS: Joi.number().integer().min(100).max(100000).default(4000),
+  AI_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(60000),
+  AI_MAX_RETRIES: Joi.number().integer().min(0).max(3).default(1),
+  AI_MAX_QUESTIONS_PER_REQUEST: Joi.number().integer().min(1).max(500).default(100),
+  AI_PROMPT_STRATEGY_VERSION: Joi.string().min(1).max(64).default('grounded-question-v1'),
+  AI_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
   EMBEDDING_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
   EMBEDDING_MODEL: Joi.string().allow('').default('text-embedding-3-small'),
   EMBEDDING_API_KEY: Joi.string().allow('').default(''),
@@ -89,6 +96,10 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.EMBEDDING_PROVIDER === 'test')
     return helpers.error('any.invalid', {
       message: 'The deterministic test embedding provider is forbidden in production',
+    });
+  if (value.APP_ENV === 'production' && value.AI_PROVIDER === 'test')
+    return helpers.error('any.invalid', {
+      message: 'The deterministic test AI provider is forbidden in production',
     });
   if (value.EMBEDDING_PROVIDER === 'openai' && value.EMBEDDING_MODEL !== 'text-embedding-3-small')
     return helpers.error('any.invalid', {

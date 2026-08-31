@@ -24,6 +24,9 @@ import { ContentChunkEmbedding } from '../modules/embeddings/entities/content-ch
 import { EmbeddingJob } from '../modules/embeddings/entities/embedding-job.entity';
 import { RetrievalEvent } from '../modules/retrieval/entities/retrieval-event.entity';
 import { RetrievalEventChunk } from '../modules/retrieval/entities/retrieval-event-chunk.entity';
+import { GenerationJob } from '../modules/ai-generation/entities/generation-job.entity';
+import { GenerationJobItem } from '../modules/ai-generation/entities/generation-job-item.entity';
+import { QuestionCitation } from '../modules/questions/entities/question-citation.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -56,6 +59,9 @@ export default new DataSource({
     EmbeddingJob,
     RetrievalEvent,
     RetrievalEventChunk,
+    GenerationJob,
+    GenerationJobItem,
+    QuestionCitation,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

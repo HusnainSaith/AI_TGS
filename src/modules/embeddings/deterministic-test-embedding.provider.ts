@@ -36,13 +36,21 @@ export class DeterministicTestEmbeddingProvider implements EmbeddingProvider {
     const info = this.getModelInfo();
     return Promise.resolve(
       texts.map((text) => {
-        const digest = createHash('sha256').update(text).digest();
-        const vector = Array.from(
-          { length: info.dimension },
-          (_, index) => (digest[index % digest.length]! - 127.5) / 127.5,
-        );
+        const vector = Array.from({ length: info.dimension }, () => 0);
+        const tokens = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+        for (const token of tokens) {
+          const digest = createHash('sha256').update(token).digest();
+          for (let index = 0; index < 8; index++) {
+            const position = ((digest[index * 2]! << 8) | digest[index * 2 + 1]!) % info.dimension;
+            vector[position]! += digest[16 + index]! % 2 === 0 ? 1 : -1;
+          }
+        }
         const norm = Math.hypot(...vector);
-        return { ...info, vector: vector.map((value) => value / norm), latencyMs: 0 };
+        return {
+          ...info,
+          vector: vector.map((value) => value / (norm || 1)),
+          latencyMs: 0,
+        };
       }),
     );
   }

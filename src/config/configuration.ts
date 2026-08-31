@@ -73,4 +73,16 @@ export const configuration = () => ({
     contextBudgetTokens: Number(process.env.RAG_CONTEXT_BUDGET_TOKENS ?? 6000),
     strategyVersion: process.env.RAG_RETRIEVAL_STRATEGY_VERSION ?? 'hybrid-v1',
   },
+  aiGeneration: {
+    provider: process.env.AI_PROVIDER || 'openai',
+    model: process.env.AI_MODEL || '',
+    apiKey: process.env.OPENAI_API_KEY || process.env.AI_API_KEY || '',
+    temperature: Number(process.env.AI_TEMPERATURE ?? 0.2),
+    maxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS ?? 4000),
+    timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 60000),
+    maxRetries: Number(process.env.AI_MAX_RETRIES ?? 1),
+    maxQuestionsPerRequest: Number(process.env.AI_MAX_QUESTIONS_PER_REQUEST ?? 100),
+    promptStrategyVersion: process.env.AI_PROMPT_STRATEGY_VERSION ?? 'grounded-question-v1',
+    staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
+  },
 });

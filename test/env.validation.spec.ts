@@ -66,4 +66,17 @@ describe('environment validation', () => {
       envSchema.validate({ ...base, RAG_VECTOR_WEIGHT: 0.7, RAG_KEYWORD_WEIGHT: 0.3 }).error,
     ).toBeUndefined();
   });
+  it('bounds AI generation and forbids the deterministic AI provider in production', () => {
+    const base = { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) };
+    expect(envSchema.validate({ ...base, AI_MAX_QUESTIONS_PER_REQUEST: 0 }).error).toBeDefined();
+    expect(envSchema.validate({ ...base, AI_MAX_RETRIES: 4 }).error).toBeDefined();
+    expect(
+      envSchema.validate({
+        ...base,
+        APP_ENV: 'production',
+        DATABASE_PASSWORD: 'secret',
+        AI_PROVIDER: 'test',
+      }).error,
+    ).toBeDefined();
+  });
 });

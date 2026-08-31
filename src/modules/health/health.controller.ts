@@ -36,6 +36,16 @@ export class HealthController {
           this.config.get<string>('embedding.provider') === 'test' ||
           Boolean(this.config.get<string>('embedding.apiKey')),
       },
+      aiGenerationProvider: {
+        provider: this.config.get<string>('aiGeneration.provider') ?? null,
+        model: this.config.get<string>('aiGeneration.model') || null,
+        configured:
+          this.config.get<string>('aiGeneration.provider') === 'test' ||
+          Boolean(
+            this.config.get<string>('aiGeneration.model') &&
+            this.config.get<string>('aiGeneration.apiKey'),
+          ),
+      },
       timestamp: new Date().toISOString(),
     };
   }

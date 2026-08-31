@@ -64,5 +64,18 @@
 - `ENGINEERING_DECISION`: Exact content hashes are unique per result. Highly-overlapping adjacent chunks from one version are suppressed at an 0.8 token-set overlap threshold; useful adjacent evidence remains eligible.
 - `ENGINEERING_DECISION`: Context packing preserves rank and whole chunks within the evidence token budget and assigns stable `SRC_1...SRC_n` labels. It never truncates content.
 - `ENGINEERING_DECISION`: RetrievalEventChunk is normalized rather than JSON-only, retaining immutable rank, scores, content hash, and locator snapshot for later citation linkage.
-- `DEFERRED`: ANN indexes, reranking, prompt construction, generation jobs, QuestionCitation, and AI question generation.
+- `DEFERRED`: ANN indexes and reranking.
 - `VALIDATION`: PostgreSQL 17.10 on Windows was extended in place with official pgvector v0.8.6 built using Visual Studio Build Tools 2022/MSVC x64. No second server or service restart was required; core and RAG migrations, vector dimension/cosine checks, indexed FTS, atomic publication, hybrid retrieval, tenant isolation, archival retention, and insufficient-knowledge behavior passed against real PostgreSQL.
+
+## Grounded AI generation decisions
+
+- `ENGINEERING_DECISION`: A GenerationJob expands deterministically into one item per Topic + QuestionType + Difficulty. An item may persist multiple questions; `questions.generation_job_item_id` preserves that lineage while the item's legacy-compatible `question_id` points to its first result.
+- `SECURITY_DECISION`: MVP grounding mode is REQUIRED only. Each item creates its own RetrievalEvent, and insufficient retrieval never invokes the generation provider or creates a Question.
+- `SECURITY_DECISION`: `GroundedPromptBuilder` treats delimited SOURCE blocks as untrusted data and explicitly forbids following source instructions, tool/secret requests, system-prompt disclosure, and unsupported external facts.
+- `ENGINEERING_DECISION`: Provider output is strict JSON. Server validation enforces exact count/type/difficulty/marks, existing option rules, and citations limited to labels selected by the item's RetrievalEvent.
+- `ENGINEERING_DECISION`: AI questions are always server-stamped AI_GENERATED, PENDING, ACTIVE, and GROUNDED only after evidence validation. Citation locator/hash/score values are copied from RetrievalEventChunk snapshots, never from model-authored provenance.
+- `ENGINEERING_DECISION`: Server-controlled marks are MCQ/TRUE_FALSE/FILL_BLANK=1, SHORT=2, LONG=5. Exact normalized duplicates are rejected against both the current transaction and the owner's active Question Bank; near-duplicate detection remains an explicit future interface.
+- `ENGINEERING_DECISION`: PostgreSQL processing tokens and expiring leases make job/item claims recoverable without Redis. Token counts and request count are accumulated; monetary cost remains null because pricing is not configured.
+- `ENGINEERING_DECISION`: Regeneration creates a new RetrievalEvent and new Question/citations while preserving prior questions. DELETE is cancellation state, not physical deletion, and cannot cascade into question or citation history.
+- `DEFERRED`: Subscription/quota enforcement. GenerationEntitlementService explicitly returns NO_SUBSCRIPTION_ENFORCEMENT_YET and performs no fake charging or usage mutation.
+- `VALIDATION`: Deterministic test generation passed real PostgreSQL publication → retrieval → mixed generation → pending Question/options/citations, authorization, regeneration, cancellation-history, and insufficient-knowledge flows. No live AI call was made because an exact AI_MODEL and key are not configured.

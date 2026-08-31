@@ -12,9 +12,13 @@ export interface RankedEvidence {
   keywordScore: number;
   hybridScore: number;
 }
+export interface PackedEvidence extends RankedEvidence {
+  label: string;
+  rank: number;
+}
 @Injectable()
 export class ContextPackingService {
-  pack(candidates: RankedEvidence[], budget: number, topK: number) {
+  pack(candidates: RankedEvidence[], budget: number, topK: number): PackedEvidence[] {
     const selected: RankedEvidence[] = [];
     const hashes = new Set<string>();
     for (const candidate of candidates) {

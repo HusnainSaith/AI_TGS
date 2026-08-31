@@ -93,6 +93,14 @@ Docker Compose remains an optional alternative: `docker compose up -d` and `dock
 
 The API base is `http://localhost:3000/api/v1`. Development Swagger UI is at `http://localhost:3000/api/docs` and is disabled in production. Health is `GET /api/v1/health`.
 
+## Grounded AI generation foundation
+
+`AiGenerationModule` exposes durable asynchronous generation under `/api/v1/ai`. `POST /ai/tests/generate` validates the complete curriculum hierarchy and expands a bounded request into Topic + type + difficulty items without calling an AI provider. The controlled `POST /ai/jobs/:jobId/process` endpoint uses PostgreSQL processing tokens/leases and the same service a future BullMQ worker can invoke; Redis is not required.
+
+MVP generation is REQUIRED-grounding only. Every item calls `RetrievalService`, persists its own RetrievalEvent, builds an injection-resistant prompt from labeled evidence, and skips the generation provider when evidence is insufficient. Strict JSON, count, type, difficulty, server marks, option structure, citations, and exact duplicates are validated before Questions are atomically saved as `AI_GENERATED`, `PENDING`, `ACTIVE`, and `GROUNDED`. `question_citations` copies immutable chunk/version/locator/hash/score provenance from selected evidence. Regeneration creates new evidence and questions without overwriting history; DELETE records cancellation rather than deleting questions or citations.
+
+Configure `AI_PROVIDER=openai`, an explicit `AI_MODEL`, and `OPENAI_API_KEY` for production generation. No model is guessed when `AI_MODEL` is empty. `AI_PROVIDER=test` is deterministic, has failure simulations, makes no external calls, and is rejected in production. `GenerationEntitlementService` is currently an explicit no-enforcement hook; subscriptions, quotas, and charging remain deferred.
+
 ## Quality commands
 
 ```bash

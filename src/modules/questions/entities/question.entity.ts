@@ -49,6 +49,8 @@ export class Question extends BaseEntity {
   reviewStatus!: QuestionReviewStatus;
   @Column({ name: 'generation_job_id', type: 'uuid', nullable: true }) generationJobId!:
     string | null;
+  @Column({ name: 'generation_job_item_id', type: 'uuid', nullable: true }) generationJobItemId!:
+    string | null;
   @Column({ name: 'created_by', type: 'uuid' }) createdBy!: string;
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'created_by' })

@@ -22,6 +22,8 @@ import {
 } from './dto/question.dto';
 import { Question } from './entities/question.entity';
 import { QuestionOption } from './entities/question-option.entity';
+import { QuestionCitation } from './entities/question-citation.entity';
+import { QuestionDifficulty, QuestionType } from './enums/question.enums';
 import {
   GroundingStatus,
   QuestionReviewStatus,
@@ -190,6 +192,87 @@ export class QuestionsService {
           .findOneOrFail({ where: { id: q.id }, relations: { options: true } }),
       );
     });
+  }
+  async createGenerated(
+    input: {
+      topicId: string;
+      chapterId: string;
+      subjectId: string;
+      classId: string;
+      type: QuestionType;
+      questionText: string;
+      difficulty: QuestionDifficulty;
+      marks: number;
+      explanation: string | null;
+      options: QuestionOptionDto[];
+      generationJobId: string;
+      generationJobItemId: string;
+      retrievalEventId: string;
+      citations: Array<{
+        contentChunkId: string;
+        documentVersionId: string;
+        locator: Record<string, unknown>;
+        contentHash: string;
+        score: number;
+      }>;
+    },
+    user: AuthenticatedUser,
+    manager: EntityManager,
+  ): Promise<Question> {
+    await this.validatePath(input);
+    this.validator.validate(input.type, input.options);
+    await this.ensureNoDuplicate(manager, user.id, input.topicId, input.questionText);
+    const question = await manager.getRepository(Question).save({
+      topicId: input.topicId,
+      chapterId: input.chapterId,
+      subjectId: input.subjectId,
+      classId: input.classId,
+      type: input.type,
+      questionText: input.questionText.trim(),
+      difficulty: input.difficulty,
+      marks: input.marks,
+      explanation: input.explanation,
+      createdBy: user.id,
+      source: QuestionSource.AI_GENERATED,
+      reviewStatus: QuestionReviewStatus.PENDING,
+      status: QuestionStatus.ACTIVE,
+      groundingStatus: GroundingStatus.GROUNDED,
+      generationJobId: input.generationJobId,
+      generationJobItemId: input.generationJobItemId,
+      retrievalEventId: input.retrievalEventId,
+    });
+    await this.replaceOptions(manager, question.id, input.options);
+    await manager.getRepository(QuestionCitation).save(
+      input.citations.map((citation, index) =>
+        manager.getRepository(QuestionCitation).create({
+          questionId: question.id,
+          retrievalEventId: input.retrievalEventId,
+          contentChunkId: citation.contentChunkId,
+          documentVersionId: citation.documentVersionId,
+          locator: citation.locator,
+          excerptHash: citation.contentHash,
+          retrievalScore: citation.score,
+          citationOrder: index + 1,
+        }),
+      ),
+    );
+    await this.audit.record(
+      {
+        actorId: user.id,
+        action: 'question.ai.create',
+        entityType: 'question',
+        entityId: question.id,
+        metadata: {
+          type: input.type,
+          topicId: input.topicId,
+          generationJobId: input.generationJobId,
+          retrievalEventId: input.retrievalEventId,
+          citationCount: input.citations.length,
+        },
+      },
+      manager,
+    );
+    return question;
   }
   async list(query: ListQuestionsDto, user: AuthenticatedUser) {
     const qb = this.questions

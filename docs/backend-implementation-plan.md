@@ -45,5 +45,6 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 7. Integrate real malware scanning with persistent states and production gate. (Windows Defender complete; OCR deferred)
 8. Implement embeddings/pgvector and guarded publication preflight. (embedding foundation complete; activation remains deferred)
 9. Implement atomic publication and hybrid retrieval with PostgreSQL FTS, pgvector cosine similarity, curriculum/tenant filters, context packing, and RetrievalEvents. (complete and validated against local PostgreSQL 17.10 + pgvector 0.8.6)
-10. Entitlements/usage, then grounded AI jobs and duplicate detection.
-11. Test builder/PDF, followed by payment adapters and hardening.
+10. Grounded asynchronous AI generation jobs, evidence-bound prompts, strict output/citation validation, pending-review Question persistence, exact duplicate protection, and item regeneration. (complete; deterministic provider validated, live OpenAI model not configured)
+11. Entitlements, transactional usage reservation/settlement, subscriptions, and quotas.
+12. Test builder/PDF, followed by payment adapters and hardening.
