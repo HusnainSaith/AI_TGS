@@ -18,6 +18,7 @@ import { TextNormalizerService } from './processing/text-normalizer.service';
 import { TokenEstimatorService } from './processing/token-estimator.service';
 import { ChunkingService } from './processing/chunking.service';
 import { CompletenessVerifierService } from './processing/completeness-verifier.service';
+import { MalwareScanningService } from './malware-scanning.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([IngestionJob, ContentChunk, DocumentVersion, KnowledgeDocument]),
@@ -37,7 +38,8 @@ import { CompletenessVerifierService } from './processing/completeness-verifier.
     TokenEstimatorService,
     ChunkingService,
     CompletenessVerifierService,
+    MalwareScanningService,
   ],
-  exports: [IngestionProcessorService],
+  exports: [IngestionProcessorService, MalwareScanningService],
 })
 export class IngestionModule {}

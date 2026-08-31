@@ -41,6 +41,9 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 3. Manual question bank and review constraints. (complete)
 4. KB upload/storage/quarantine and ingestion jobs. (secure-source foundation complete; processing deferred)
 5. Deterministic extraction and locator-preserving chunks. (complete; ends at READY_FOR_MAPPING)
-6. Malware/OCR provider integration, curriculum mapping, embeddings, publication and hybrid retrieval.
-7. Entitlements/usage, then grounded AI jobs and duplicate detection.
-8. Test builder/PDF, followed by payment adapters and hardening.
+6. Curriculum mapping, review readiness, preview, metadata coverage, and guarded publication preflight. (complete; publication blocked honestly)
+7. Integrate real malware scanning with persistent states and production gate. (Windows Defender complete; OCR deferred)
+8. Implement embeddings/pgvector and guarded publication preflight. (embedding foundation complete; activation remains deferred)
+9. Implement hybrid retrieval with PostgreSQL FTS, pgvector cosine similarity, curriculum/tenant filters, context packing, and RetrievalEvents.
+10. Entitlements/usage, then grounded AI jobs and duplicate detection.
+11. Test builder/PDF, followed by payment adapters and hardening.

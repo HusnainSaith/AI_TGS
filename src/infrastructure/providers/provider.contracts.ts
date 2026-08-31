@@ -3,8 +3,27 @@ export interface AiGenerationProvider {
   generateQuestions(input: unknown): Promise<unknown>;
 }
 export const EMBEDDING_PROVIDER = Symbol('EmbeddingProvider');
+export interface EmbeddingModelInfo {
+  provider: string;
+  model: string;
+  dimension: number;
+  version?: string;
+}
+export interface EmbeddingUsage {
+  inputTokens?: number;
+  totalTokens?: number;
+}
+export interface EmbeddingResult extends EmbeddingModelInfo {
+  vector: readonly number[];
+  usage?: EmbeddingUsage;
+  providerRequestId?: string;
+  latencyMs: number;
+}
 export interface EmbeddingProvider {
-  embed(texts: readonly string[]): Promise<readonly number[][]>;
+  readonly providerName: string;
+  getModelInfo(): EmbeddingModelInfo;
+  embed(text: string): Promise<EmbeddingResult>;
+  embedBatch(texts: readonly string[]): Promise<readonly EmbeddingResult[]>;
 }
 export const EMAIL_PROVIDER = Symbol('EmailProvider');
 export interface EmailProvider {

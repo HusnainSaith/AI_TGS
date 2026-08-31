@@ -9,15 +9,38 @@ import { KnowledgeDocument } from './entities/knowledge-document.entity';
 import { KnowledgeBaseController } from './knowledge-base.controller';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { ContentChunk } from './entities/content-chunk.entity';
+import { CurriculumModule } from '../curriculum/curriculum.module';
+import { DocumentTopicMapping } from './entities/document-topic-mapping.entity';
+import { CurriculumMappingValidator } from './curriculum-mapping-validator.service';
+import { DocumentMappingsService } from './document-mappings.service';
+import { KnowledgeReadinessService } from './knowledge-readiness.service';
+import { PublicationPreflightService } from './publication-preflight.service';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { ContentChunkEmbedding } from '../embeddings/entities/content-chunk-embedding.entity';
 @Module({
   imports: [
-    TypeOrmModule.forFeature([KnowledgeDocument, DocumentVersion, IngestionJob, ContentChunk]),
+    TypeOrmModule.forFeature([
+      KnowledgeDocument,
+      DocumentVersion,
+      IngestionJob,
+      ContentChunk,
+      DocumentTopicMapping,
+      ContentChunkEmbedding,
+    ]),
+    CurriculumModule,
     AuditModule,
     StorageModule,
     FileSecurityModule,
+    EmbeddingsModule,
   ],
   controllers: [KnowledgeBaseController],
-  providers: [KnowledgeBaseService],
+  providers: [
+    KnowledgeBaseService,
+    CurriculumMappingValidator,
+    KnowledgeReadinessService,
+    PublicationPreflightService,
+    DocumentMappingsService,
+  ],
   exports: [KnowledgeBaseService],
 })
 export class KnowledgeBaseModule {}

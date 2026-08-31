@@ -46,8 +46,20 @@ export const configuration = () => ({
     pdfMaxEmptyPageRatio: Number(process.env.KB_PDF_MAX_EMPTY_PAGE_RATIO ?? 0.6),
     staleMinutes: Number(process.env.KB_INGESTION_STALE_MINUTES ?? 15),
     allowUnscannedProcessing:
-      process.env.APP_ENV !== 'production' && process.env.KB_ALLOW_UNSCANNED_PROCESSING !== 'false',
+      process.env.APP_ENV !== 'production' && process.env.KB_ALLOW_UNSCANNED_PROCESSING === 'true',
     ocrProvider: process.env.OCR_PROVIDER ?? 'none',
     malwareScannerProvider: process.env.MALWARE_SCANNER_PROVIDER ?? 'none',
+    windowsDefenderPath: process.env.WINDOWS_DEFENDER_MPCMDRUN_PATH,
+  },
+  embedding: {
+    provider: process.env.EMBEDDING_PROVIDER || 'openai',
+    model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+    apiKey: process.env.OPENAI_API_KEY || process.env.EMBEDDING_API_KEY || '',
+    dimension: 1536,
+    distanceMetric: 'cosine',
+    preprocessingVersion: 'normalized-chunk-v1',
+    batchSize: Number(process.env.EMBEDDING_BATCH_SIZE ?? 32),
+    timeoutMs: Number(process.env.EMBEDDING_TIMEOUT_MS ?? 30000),
+    staleMinutes: Number(process.env.EMBEDDING_STALE_MINUTES ?? 15),
   },
 });

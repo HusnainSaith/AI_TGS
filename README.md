@@ -24,11 +24,15 @@ npm run start:dev
 
 Do not commit `.env`; replace both JWT secrets and database credentials. Provider keys are optional until their adapters are invoked.
 
-Local Knowledge Base storage defaults to `./storage` and is ignored by Git. Configure `STORAGE_LOCAL_ROOT`, `KB_MAX_FILE_SIZE_MB`, and `KB_ALLOWED_MIME_TYPES` as needed. Quarantine is never statically served and responses do not expose storage keys or absolute paths. Every upload creates a durable `QUEUED` job at `SIGNATURE_VALIDATION`; Redis absence does not block CRUD/upload. Before processing, malware remains `NOT_SCANNED`, extraction remains `PENDING`, and `activeVersionId` remains null. Embeddings, mapping, publication, and retrieval remain deferred.
+Local Knowledge Base storage defaults to `./storage` and is ignored by Git. Configure `STORAGE_LOCAL_ROOT`, `KB_MAX_FILE_SIZE_MB`, and `KB_ALLOWED_MIME_TYPES` as needed. Quarantine is never statically served and responses do not expose storage keys or absolute paths. Every upload creates a durable `QUEUED` job at `SIGNATURE_VALIDATION`; Redis absence does not block CRUD/upload. Before processing, malware remains `NOT_SCANNED`, extraction remains `PENDING`, and `activeVersionId` remains null. Publication and retrieval remain explicit later phases.
 
 Ingestion processing is available through the shared `IngestionProcessorService`; the restricted `POST /api/v1/kb/ingestion-jobs/:id/process` endpoint invokes that same service while Redis is unavailable. PDF.js extracts page-aware PDF text, Mammoth converts DOCX semantic structure into ordered headings/paragraphs, and TXT extraction preserves line ranges. Normalized deterministic chunks retain honest JSON locators and SHA-256 content hashes. Success ends at `AWAITING_MAPPING` / `READY_FOR_MAPPING`, never publication.
 
 No malware scanner or OCR provider is configured by default. Production rejects unscanned processing. Controlled synthetic development/test processing requires `KB_ALLOW_UNSCANNED_PROCESSING=true`; this does not change `NOT_SCANNED` to `CLEAN`. Scanned PDFs fail with `OCR_PROVIDER_NOT_CONFIGURED` until a real provider is configured. Chunk token counts are deterministic estimates (`ceil(characters / 4)`), not model-specific tokenizer counts.
+
+Windows Defender is the first real malware adapter. It is opt-in with `MALWARE_SCANNER_PROVIDER=windows_defender` and an explicit `WINDOWS_DEFENDER_MPCMDRUN_PATH`; `none` remains the default. Scanning reads quarantined bytes through object storage, materializes a random temporary file, invokes Defender without remediation, deletes the temporary file, and persists provider/time/status metadata. CLEAN is idempotent, FAILED may retry, and INFECTED is not automatically retried. The administrative `POST /api/v1/kb/ingestion-jobs/:id/scan` endpoint enforces system/same-school administration. Publication requires CLEAN plus complete active embeddings.
+
+Local validation uses the documented `ai_test_generation` database. Core migrations through `MalwareScanning1725700000000` and PostgreSQL E2E tests have been verified locally. `.gitattributes` now establishes LF for source and documentation without mass-rewriting the existing CRLF baseline.
 
 ## LOCAL POSTGRESQL SETUP — WITHOUT DOCKER
 
@@ -47,7 +51,7 @@ No malware scanner or OCR provider is configured by default. Production rejects 
 6. Verify `GET http://localhost:3000/api/v1/health`.
 7. Open `http://localhost:3000/api/docs` during development.
 
-Core migrations do not require pgvector. When RAG work begins, install pgvector for the exact local PostgreSQL major version and run `npm run migration:run:rag`. The command fails with an actionable message when the server lacks the extension; it does not roll back core curriculum migrations.
+Core migrations do not require pgvector. The verified local PostgreSQL 17 installation uses pgvector 0.8.6. Run `npm run migration:run:rag` to enable `vector` and create the independent embedding schema; core curriculum migrations remain separate.
 
 Docker Compose remains an optional alternative: `docker compose up -d` and `docker compose down`.
 
@@ -81,3 +85,19 @@ Use `npm run migration:show` for core state and `npm run migration:show:rag` for
 Passwords use Argon2id. Opaque verification/reset tokens and refresh JWTs are stored only as SHA-256 digests. Refresh rotation, reuse-family revocation, current-user status reload, RBAC, input allow-listing, rate limits, Helmet, restricted CORS, correlation IDs, and production-safe exception responses are foundational controls. Place the service behind an HTTPS reverse proxy and configure `TRUST_PROXY=true` only when the proxy is trusted. Tenant-owned repositories must require server-derived tenant context; never accept a school scope solely from request payloads.
 
 Question rules: MCQs require four uniquely ordered options and one correct answer. TRUE/FALSE uses two `TRUE`/`FALSE` options. SHORT, LONG, and FILL_BLANK reject options; fill-blank model answers use `explanation`. DELETE archives questions. Questions are scoped to Topic/Chapter/Subject/Class; Section remains test context and is not persisted on Question.
+
+## Curriculum mapping and review foundation
+
+Processed versions support multiple whole-version curriculum mappings through `/api/v1/kb/document-versions/:id/mappings`. Paths are contiguous, may stop at any level from Board through Topic, and must reference active related curriculum. Specificity is derived as Board=1 through Topic=5. Mappings follow `DRAFT -> PENDING_REVIEW -> APPROVED|REJECTED`; DELETE archives history. GLOBAL mutation is SYSTEM_ADMIN-only, while SCHOOL_ADMIN is limited to its server-derived school. PostgreSQL prevents duplicate active logical paths.
+
+Administrative preview, paginated immutable chunks, readiness, review submission, guarded publication preflight, and metadata-only coverage are exposed below `/api/v1/kb`. Review requires completed extraction, verified non-empty chunks, confirmed rights, and an approved mapping. Publication additionally requires real CLEAN malware and active embeddings; no endpoint automatically marks a version PUBLISHED. Coverage is not semantic coverage or retrieval quality. Range mappings, OCR, retrieval, RAG, and AI generation remain deferred.
+
+## Embedding foundation
+
+The selected MVP provider is OpenAI `text-embedding-3-small`. Official OpenAI documentation verifies its default 1,536 dimensions, optional dimension reduction, batch input, token usage fields, and cosine recommendation. This generation deliberately uses the provider default (`vector(1536)`) and cosine distance. No ANN index is created until retrieval measurements justify one.
+
+Configure `EMBEDDING_PROVIDER=openai`, `EMBEDDING_MODEL=text-embedding-3-small`, and `OPENAI_API_KEY`. Batch size, timeout, and PostgreSQL lease duration are independently bounded. Missing credentials leave the application and database healthy but block real embedding work and publication. The deterministic provider is test-only and rejected in production.
+
+`content_chunk_embeddings` stores one row per chunk and deterministic configuration version, preserving prior generations for rollback/evaluation. The version hashes provider, model, dimension, distance metric, and preprocessing policy. Content-hash mismatch, failed rows, and inactive configuration are re-index candidates; valid identical rows are skipped. `embedding_jobs` supplies durable progress, bounded retries, UUID processing leases, usage/operational metrics, and safe audit events. Vectors and secrets are never returned.
+
+Administrative operations are `POST /kb/document-versions/:id/embed`, `POST /kb/document-versions/:id/embeddings/reindex`, and `POST /kb/embedding-jobs/:id/retry`; status is `GET /kb/document-versions/:id/embeddings`. SYSTEM_ADMIN may moderate all content, SCHOOL_ADMIN may mutate only its SCHOOL content, and TEACHER has status-only access. Embedding requires CLEAN malware, completed extraction, a non-archived source, and valid chunks; mapping may proceed independently. Publication is never automatic. Hybrid retrieval, FTS, retrieval events, citations, RAG, and question generation remain deferred.

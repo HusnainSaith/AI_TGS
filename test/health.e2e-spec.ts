@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import request = require('supertest'); // eslint-disable-line @typescript-eslint/no-require-imports
 import { HealthController } from '../src/modules/health/health.controller';
 import { ResponseEnvelopeInterceptor } from '../src/common/interceptors/response-envelope.interceptor';
+import { ConfigService } from '@nestjs/config';
 
 describe('Health API (e2e)', () => {
   let app: INestApplication;
@@ -12,6 +13,7 @@ describe('Health API (e2e)', () => {
       controllers: [HealthController],
       providers: [
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([{ ok: 1 }]) } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
       ],
     }).compile();
     app = module.createNestApplication();

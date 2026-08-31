@@ -7,6 +7,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { IngestionService } from './ingestion.service';
 import { IngestionProcessorService } from './ingestion-processor.service';
+import { MalwareScanningService } from './malware-scanning.service';
 @ApiTags('Knowledge Base Ingestion')
 @ApiBearerAuth()
 @RequireVerifiedEmail()
@@ -15,12 +16,24 @@ export class IngestionController {
   constructor(
     private readonly ingestion: IngestionService,
     private readonly processor: IngestionProcessorService,
+    private readonly scanning: MalwareScanningService,
   ) {}
   @Get(':id') @Roles(UserRole.SYSTEM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER) find(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.ingestion.find(id, user);
+  }
+  @Post(':id/scan')
+  @Roles(UserRole.SYSTEM_ADMIN, UserRole.SCHOOL_ADMIN)
+  @ApiOperation({
+    summary: 'Scan a quarantined source with the configured real scanner',
+    description:
+      'Same-school authorization is enforced. CLEAN is idempotent, FAILED may retry, and INFECTED cannot be automatically retried. No scanner path or raw output is returned.',
+  })
+  async scan(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    const job = await this.ingestion.authorizeProcessing(id, user);
+    return this.scanning.scan(job.documentVersion, user.id);
   }
   @Post(':id/retry')
   @Roles(UserRole.SYSTEM_ADMIN, UserRole.SCHOOL_ADMIN)

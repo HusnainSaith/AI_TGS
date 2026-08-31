@@ -7,7 +7,7 @@ coverage/
 logs/
 tmp/
 uploads/
-storage/
+/storage/
 *.log
 .idea/
 .vscode/

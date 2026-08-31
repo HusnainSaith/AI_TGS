@@ -19,6 +19,7 @@ import { UsersModule } from './modules/users/users.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
+import { EmbeddingsModule } from './modules/embeddings/embeddings.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -39,6 +40,7 @@ import { IngestionModule } from './modules/ingestion/ingestion.module';
     QuestionsModule,
     KnowledgeBaseModule,
     IngestionModule,
+    EmbeddingsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

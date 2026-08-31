@@ -4,6 +4,7 @@ import { IngestionJob } from '../../ingestion/entities/ingestion-job.entity';
 import { ExtractionStatus, MalwareScanStatus } from '../enums/knowledge-base.enums';
 import { KnowledgeDocument } from './knowledge-document.entity';
 import { ContentChunk } from './content-chunk.entity';
+import { DocumentTopicMapping } from './document-topic-mapping.entity';
 
 @Entity('document_versions')
 @Unique(['documentId', 'versionNo'])
@@ -46,8 +47,18 @@ export class DocumentVersion extends BaseEntity {
     default: MalwareScanStatus.NOT_SCANNED,
   })
   malwareScanStatus!: MalwareScanStatus;
+  @Column({ name: 'malware_scanner_provider', type: 'varchar', length: 80, nullable: true })
+  malwareScannerProvider!: string | null;
+  @Column({ name: 'malware_scanned_at', type: 'timestamptz', nullable: true })
+  malwareScannedAt!: Date | null;
+  @Column({ name: 'malware_scan_metadata', type: 'jsonb', nullable: true })
+  malwareScanMetadata!: Record<string, unknown> | null;
+  @Column({ name: 'malware_error_code', type: 'varchar', length: 80, nullable: true })
+  malwareErrorCode!: string | null;
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true }) publishedAt!: Date | null;
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true }) archivedAt!: Date | null;
   @OneToMany(() => IngestionJob, (j) => j.documentVersion) ingestionJobs!: IngestionJob[];
   @OneToMany(() => ContentChunk, (c) => c.documentVersion) chunks!: ContentChunk[];
+  @OneToMany(() => DocumentTopicMapping, (m) => m.documentVersion)
+  mappings!: DocumentTopicMapping[];
 }

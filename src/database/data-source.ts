@@ -19,6 +19,9 @@ import { KnowledgeDocument } from '../modules/knowledge-base/entities/knowledge-
 import { DocumentVersion } from '../modules/knowledge-base/entities/document-version.entity';
 import { IngestionJob } from '../modules/ingestion/entities/ingestion-job.entity';
 import { ContentChunk } from '../modules/knowledge-base/entities/content-chunk.entity';
+import { DocumentTopicMapping } from '../modules/knowledge-base/entities/document-topic-mapping.entity';
+import { ContentChunkEmbedding } from '../modules/embeddings/entities/content-chunk-embedding.entity';
+import { EmbeddingJob } from '../modules/embeddings/entities/embedding-job.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -46,6 +49,9 @@ export default new DataSource({
     DocumentVersion,
     IngestionJob,
     ContentChunk,
+    DocumentTopicMapping,
+    ContentChunkEmbedding,
+    EmbeddingJob,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

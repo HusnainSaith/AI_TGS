@@ -3,10 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, Repository } from 'typeorm';
-import {
-  MALWARE_SCANNER_PROVIDER,
-  MalwareScannerProvider,
-} from '../../infrastructure/file-security/malware-scanner.provider';
 import { OCR_PROVIDER, OcrProvider } from '../../infrastructure/ocr/ocr.provider';
 import {
   OBJECT_STORAGE_PROVIDER,
@@ -31,6 +27,7 @@ import { TxtExtractorService } from './extraction/txt-extractor.service';
 import { ChunkingService } from './processing/chunking.service';
 import { CompletenessVerifierService } from './processing/completeness-verifier.service';
 import { TextNormalizerService } from './processing/text-normalizer.service';
+import { MalwareScanningService } from './malware-scanning.service';
 
 @Injectable()
 export class IngestionProcessorService {
@@ -40,7 +37,6 @@ export class IngestionProcessorService {
     private readonly data: DataSource,
     private readonly config: ConfigService,
     @Inject(OBJECT_STORAGE_PROVIDER) private readonly storage: ObjectStorageProvider,
-    @Inject(MALWARE_SCANNER_PROVIDER) private readonly scanner: MalwareScannerProvider,
     @Inject(OCR_PROVIDER) private readonly ocr: OcrProvider,
     private readonly pdf: PdfExtractorService,
     private readonly docx: DocxExtractorService,
@@ -49,6 +45,7 @@ export class IngestionProcessorService {
     private readonly chunking: ChunkingService,
     private readonly completeness: CompletenessVerifierService,
     private readonly audit: AuditService,
+    private readonly scanning: MalwareScanningService,
   ) {}
   async processJob(jobId: string, actorId?: string) {
     const token = randomUUID();
@@ -92,7 +89,7 @@ export class IngestionProcessorService {
       const source = await this.storage.getObject(version.storageKey).catch(() => {
         throw new Error('STORAGE_READ_FAILED');
       });
-      const scan = await this.scanner.scan(source);
+      const scan = await this.scanning.scan(version, actorId);
       let scanStatus = MalwareScanStatus.NOT_SCANNED;
       if (scan.status === 'INFECTED') {
         scanStatus = MalwareScanStatus.INFECTED;
@@ -111,6 +108,7 @@ export class IngestionProcessorService {
       await this.updateStep(jobId, token, IngestionStep.TEXT_EXTRACTION, {
         malwareScan: scan.status,
         scannerProvider: scan.provider,
+        unscannedOverrideUsed: scan.status === 'NOT_CONFIGURED',
       });
       let extraction = await this.extractor(document.sourceType).extract(source);
       let ocrUsed = false;

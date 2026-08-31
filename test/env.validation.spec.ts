@@ -33,4 +33,27 @@ describe('environment validation', () => {
       }).error,
     ).toBeDefined();
   });
+  it('validates malware provider configuration and production override', () => {
+    const base = { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) };
+    expect(envSchema.validate({ ...base, MALWARE_SCANNER_PROVIDER: 'none' }).error).toBeUndefined();
+    expect(envSchema.validate({ ...base, MALWARE_SCANNER_PROVIDER: 'clamav' }).error).toBeDefined();
+    expect(
+      envSchema.validate({ ...base, MALWARE_SCANNER_PROVIDER: 'windows_defender' }).error,
+    ).toBeDefined();
+    expect(
+      envSchema.validate({
+        ...base,
+        MALWARE_SCANNER_PROVIDER: 'windows_defender',
+        WINDOWS_DEFENDER_MPCMDRUN_PATH: 'C:\\Defender\\MpCmdRun.exe',
+      }).error,
+    ).toBeUndefined();
+    expect(
+      envSchema.validate({
+        ...base,
+        APP_ENV: 'production',
+        DATABASE_PASSWORD: 'secret',
+        KB_ALLOW_UNSCANNED_PROCESSING: true,
+      }).error,
+    ).toBeDefined();
+  });
 });

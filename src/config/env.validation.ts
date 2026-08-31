@@ -37,7 +37,12 @@ export const envSchema = Joi.object({
   KB_INGESTION_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
   KB_ALLOW_UNSCANNED_PROCESSING: Joi.boolean().truthy('true').falsy('false').default(false),
   OCR_PROVIDER: Joi.string().valid('none').default('none'),
-  MALWARE_SCANNER_PROVIDER: Joi.string().valid('none').default('none'),
+  MALWARE_SCANNER_PROVIDER: Joi.string().valid('none', 'windows_defender').default('none'),
+  WINDOWS_DEFENDER_MPCMDRUN_PATH: Joi.string().when('MALWARE_SCANNER_PROVIDER', {
+    is: 'windows_defender',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_SECRET: Joi.string().min(32).required(),
@@ -49,9 +54,13 @@ export const envSchema = Joi.object({
   AI_PROVIDER: Joi.string().allow('').default(''),
   AI_MODEL: Joi.string().allow('').default(''),
   AI_API_KEY: Joi.string().allow('').default(''),
-  EMBEDDING_PROVIDER: Joi.string().allow('').default(''),
-  EMBEDDING_MODEL: Joi.string().allow('').default(''),
+  EMBEDDING_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
+  EMBEDDING_MODEL: Joi.string().allow('').default('text-embedding-3-small'),
   EMBEDDING_API_KEY: Joi.string().allow('').default(''),
+  OPENAI_API_KEY: Joi.string().allow('').default(''),
+  EMBEDDING_BATCH_SIZE: Joi.number().integer().min(1).max(2048).default(32),
+  EMBEDDING_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(30000),
+  EMBEDDING_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
   EMAIL_PROVIDER: Joi.string().allow('').default(''),
   EMAIL_FROM: Joi.string().allow('').default(''),
   PAYMENT_PROVIDER: Joi.string().allow('').default(''),
@@ -67,6 +76,14 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.KB_ALLOW_UNSCANNED_PROCESSING === true)
     return helpers.error('any.invalid', {
       message: 'Production cannot allow unscanned ingestion processing',
+    });
+  if (value.APP_ENV === 'production' && value.EMBEDDING_PROVIDER === 'test')
+    return helpers.error('any.invalid', {
+      message: 'The deterministic test embedding provider is forbidden in production',
+    });
+  if (value.EMBEDDING_PROVIDER === 'openai' && value.EMBEDDING_MODEL !== 'text-embedding-3-small')
+    return helpers.error('any.invalid', {
+      message: 'The active MVP OpenAI embedding model must be text-embedding-3-small',
     });
   return value;
 });

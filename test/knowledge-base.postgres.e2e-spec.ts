@@ -29,6 +29,13 @@ import { IngestionModule } from '../src/modules/ingestion/ingestion.module';
 import { KnowledgeBaseModule } from '../src/modules/knowledge-base/knowledge-base.module';
 import { School } from '../src/modules/schools/school.entity';
 import { User } from '../src/modules/users/user.entity';
+import { MALWARE_SCANNER_PROVIDER } from '../src/infrastructure/file-security/malware-scanner.provider';
+
+const controlledScanner = {
+  scan: jest.fn(() =>
+    Promise.resolve({ status: 'NOT_CONFIGURED' as const, provider: null, scannedAt: null }),
+  ),
+};
 
 class TestAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext) {
@@ -70,6 +77,7 @@ describeDatabase('Knowledge Base API with local PostgreSQL and storage', () => {
       .set('x-test-school', schoolId ?? '')
       .set('x-test-verified', String(verified));
   beforeAll(async () => {
+    process.env.KB_ALLOW_UNSCANNED_PROCESSING = 'true';
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -83,7 +91,10 @@ describeDatabase('Knowledge Base API with local PostgreSQL and storage', () => {
         { provide: APP_GUARD, useClass: RolesGuard },
         { provide: APP_GUARD, useClass: VerifiedEmailGuard },
       ],
-    }).compile();
+    })
+      .overrideProvider(MALWARE_SCANNER_PROVIDER)
+      .useValue(controlledScanner)
+      .compile();
     app = module.createNestApplication();
     app.use(
       (
@@ -388,6 +399,8 @@ describeDatabase('Knowledge Base API with local PostgreSQL and storage', () => {
       UserRole.SCHOOL_ADMIN,
       ids.schoolA,
     ).expect(201);
+    ids.secondVersion = second.body.data.version.id;
+    ids.secondJob = second.body.data.ingestionJob.id;
     expect(second.body.data.version.versionNo).toBe(2);
   });
   it('lists safe metadata, enforces related-entity tenancy, and archives', async () => {
@@ -468,6 +481,94 @@ describeDatabase('Knowledge Base API with local PostgreSQL and storage', () => {
       type: 'TEXT_LINES',
       lineFrom: 1,
     });
+    await as(
+      api().post(`/api/v1/kb/ingestion-jobs/${ids.job}/scan`),
+      ids.teacher,
+      UserRole.TEACHER,
+      ids.schoolA,
+    ).expect(403);
+    await as(
+      api().post(`/api/v1/kb/ingestion-jobs/${ids.job}/scan`),
+      ids.adminB,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolB,
+    ).expect(403);
+    controlledScanner.scan.mockResolvedValueOnce({
+      status: 'CLEAN',
+      provider: 'controlled_test',
+      scannedAt: new Date(),
+    } as never);
+    await as(
+      api().post(`/api/v1/kb/ingestion-jobs/${ids.job}/scan`),
+      ids.adminA,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolA,
+    ).expect(201);
+    const cleanVersion = await as(
+      api().get(`/api/v1/kb/document-versions/${ids.version}`),
+      ids.adminA,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolA,
+    ).expect(200);
+    expect(cleanVersion.body.data).toMatchObject({
+      malwareScanStatus: 'CLEAN',
+      malwareScannerProvider: 'controlled_test',
+    });
+    const cleanReadiness = await as(
+      api().get(`/api/v1/kb/document-versions/${ids.version}/readiness`),
+      ids.adminA,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolA,
+    ).expect(200);
+    expect(cleanReadiness.body.data.publicationBlockers).toContain('EMBEDDINGS_MISSING');
+    expect(cleanReadiness.body.data.publicationBlockers).not.toContain('MALWARE_NOT_SCANNED');
+    controlledScanner.scan.mockResolvedValueOnce({
+      status: 'SCAN_FAILED',
+      provider: 'controlled_test',
+      scannedAt: new Date(),
+      errorCode: 'CONTROLLED_FAILURE',
+    } as never);
+    await as(
+      api().post(`/api/v1/kb/ingestion-jobs/${ids.secondJob}/scan`),
+      ids.adminA,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolA,
+    ).expect(201);
+    const failedReadiness = await as(
+      api().get(`/api/v1/kb/document-versions/${ids.secondVersion}/readiness`),
+      ids.adminA,
+      UserRole.SCHOOL_ADMIN,
+      ids.schoolA,
+    ).expect(200);
+    expect(failedReadiness.body.data.publicationBlockers).toContain('MALWARE_SCAN_FAILED');
+    controlledScanner.scan.mockResolvedValueOnce({
+      status: 'INFECTED',
+      provider: 'controlled_test',
+      scannedAt: new Date(),
+      threatName: 'Controlled.Test',
+    } as never);
+    await as(
+      api().post(`/api/v1/kb/ingestion-jobs/${ids.pdfJob}/scan`),
+      ids.system,
+      UserRole.SYSTEM_ADMIN,
+    ).expect(201);
+    const infectedReadiness = await as(
+      api().get(`/api/v1/kb/document-versions/${ids.pdfVersion}/readiness`),
+      ids.system,
+      UserRole.SYSTEM_ADMIN,
+    ).expect(200);
+    expect(infectedReadiness.body.data.publicationBlockers).toContain('MALWARE_DETECTED');
+    const securityAudit = await data.query(
+      `SELECT action FROM audit_logs WHERE actor_id=ANY($1::uuid[]) AND action LIKE 'kb.security.scan.%'`,
+      [[ids.system, ids.adminA]],
+    );
+    expect(securityAudit.map((row: { action: string }) => row.action)).toEqual(
+      expect.arrayContaining([
+        'kb.security.scan.clean',
+        'kb.security.scan.failed',
+        'kb.security.scan.infected',
+      ]),
+    );
     await as(
       api().post(`/api/v1/kb/ingestion-jobs/${ids.job}/process`),
       ids.adminA,
