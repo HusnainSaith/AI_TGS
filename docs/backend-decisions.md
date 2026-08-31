@@ -105,10 +105,20 @@
 
 # Provider-neutral billing (2026-08-31)
 
-- No production payment provider is named by the SRS or repository, so no vendor SDK is installed and `PAYMENT_PROVIDER_DECISION_REQUIRED=true`.
+- The initial foundation intentionally selected no provider. Safepay was subsequently selected for the Pakistan MVP; `PAYMENT_PROVIDER_DECISION_REQUIRED=false`.
 - Commercial provider state is synchronized into local subscriptions only after signature verification. Checkout/redirect state cannot activate access.
 - Individual and pooled-school provider customers use one polymorphic `(owner_type, owner_id)` billing-customer record; school checkout is restricted to a school administrator's own school.
 - Manual subscriptions remain valid with nullable provider identifiers and explicit `MANUAL` origin. Provider-managed records use `PROVIDER` origin.
 - Payment failure maps to `PAST_DUE`; cancellation-at-period-end preserves active state until a later provider cancellation/expiration event. Upgrades, downgrades, and renewals preserve usage history because usage remains period-scoped and is never reset by billing.
 - Safe normalized webhook metadata is retained for retry/audit; exact raw payloads and PCI/card data are not stored. Transaction amounts are integer minor units.
 - Reconciliation reports unavailable until a real provider capable of authoritative subscription reads is selected. The deterministic provider is local/test-only.
+
+## Safepay adapter (2026-08-31)
+
+- Safepay is the explicitly selected Pakistan MVP provider; the provider-neutral boundary remains unchanged.
+- Integration mode is direct HTTP. Current official docs recommend `@sfpy/node-core`, but its current package does not expose subscriptions; the older official subscription SDK carries an outdated Axios dependency. The adapter centralizes documented HTTPS calls without adding either dependency.
+- Sandbox/live hosts are `https://sandbox.api.getsafepay.com` and `https://api.getsafepay.com`; subscription hosted checkout uses the corresponding Safepay checkout host and dashboard-created plan IDs.
+- Webhook version `2.0.0` uses exact-body HMAC-SHA512 hex verification from `X-SFPY-SIGNATURE`. Event token supplies DB replay/idempotency identity and Safepay `created_at` supplies stale-event ordering.
+- `subscription.created` creates only a non-entitled provider record. Entitlement becomes active after verified recurring success/resumption. Failure maps to `PAST_DUE`; canceled/ended map to `CANCELLED`/`EXPIRED`.
+- Immediate cancellation is supported. Portal, plan mutation, and authoritative subscription fetch/reconciliation remain `BILLING_PROVIDER_OPERATION_UNSUPPORTED` because current public Safepay documentation does not define those contracts.
+- No schema migration is required; existing provider IDs, normalized event JSON, minor-unit transactions, and plan mapping fields cover Safepay.

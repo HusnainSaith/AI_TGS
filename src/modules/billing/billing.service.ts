@@ -6,12 +6,15 @@ import {
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { AuditService } from '../audit/audit.service';
+import { BillingProviderError } from './billing-provider.error';
 import {
   BillingWebhookEvent,
   PAYMENT_PROVIDER,
@@ -40,6 +43,7 @@ export class BillingService {
     private data: DataSource,
     private config: ConfigService,
     @Inject(PAYMENT_PROVIDER) private provider: PaymentProvider,
+    private audit: AuditService,
   ) {}
   private activeProvider() {
     const configured = this.config.get<string>('billing.provider');
@@ -67,12 +71,14 @@ export class BillingService {
     const mapping = await this.prices.findOneBy({ planId: plan.id, provider, active: true });
     if (!mapping) throw new BadRequestException('Plan is not commercially configured');
     let customer = await this.customers.findOneBy({ ownerType: dto.ownerType, ownerId, provider });
-    if (!customer) {
+    if (!customer && this.provider.requiresCustomer) {
       const created = await this.provider.createCustomer({
         ownerType: dto.ownerType,
         ownerId,
         email: user.email,
       });
+      if (!created)
+        throw new ServiceUnavailableException('Payment provider customer creation failed');
       customer = await this.customers.save(
         this.customers.create({
           ownerType: dto.ownerType,
@@ -83,7 +89,7 @@ export class BillingService {
       );
     }
     const session = await this.provider.createCheckoutSession({
-      customerId: customer.providerCustomerId,
+      customerId: customer?.providerCustomerId ?? '',
       priceId: mapping.providerPriceId,
       successUrl: this.config.getOrThrow('billing.successUrl'),
       cancelUrl: this.config.getOrThrow('billing.cancelUrl'),
@@ -107,6 +113,12 @@ export class BillingService {
     } catch {
       throw new ConflictException('Checkout idempotency conflict');
     }
+    await this.audit.record({
+      actorId: user.id,
+      action: 'billing.checkout.create',
+      entityType: 'billing_checkout',
+      metadata: { provider, planId: plan.id, ownerType: dto.ownerType },
+    });
     return {
       checkoutSessionId: session.id,
       checkoutUrl: session.url,
@@ -116,7 +128,23 @@ export class BillingService {
   async webhook(providerName: string, raw: Buffer, signature: string) {
     if (providerName !== this.provider.name)
       throw new NotFoundException('Unknown payment provider');
-    const normalized = this.provider.verifyAndParseWebhook(raw, signature);
+    let normalized: BillingWebhookEvent;
+    try {
+      normalized = this.provider.verifyAndParseWebhook(raw, signature);
+    } catch (error) {
+      await this.audit.record({
+        action: 'billing.webhook.invalid_signature',
+        entityType: 'billing_event',
+        metadata: { provider: providerName },
+        outcome: 'REJECTED',
+      });
+      if (
+        error instanceof BillingProviderError &&
+        error.code === 'BILLING_INVALID_WEBHOOK_SIGNATURE'
+      )
+        throw new UnauthorizedException('Invalid webhook signature');
+      throw error;
+    }
     const payloadHash = createHash('sha256').update(raw).digest('hex');
     let event = await this.events.findOneBy({
       provider: providerName,
@@ -140,7 +168,29 @@ export class BillingService {
       return { accepted: true, duplicate: true };
     }
     await this.process(event.id, normalized);
+    await this.audit.record({
+      action: 'billing.webhook.processed',
+      entityType: 'billing_event',
+      entityId: event.id,
+      metadata: { provider: providerName, eventType: normalized.type },
+    });
     return { accepted: true, duplicate: false };
+  }
+  async cancel(user: AuthenticatedUser) {
+    this.activeProvider();
+    const rows: Array<{ providerSubscriptionId: string }> = await this.data.query(
+      `SELECT provider_subscription_id "providerSubscriptionId" FROM subscriptions WHERE provider=$1 AND provider_subscription_id IS NOT NULL AND (user_id=$2 OR school_id=$3) ORDER BY created_at DESC LIMIT 1`,
+      [this.provider.name, user.id, user.role === UserRole.SCHOOL_ADMIN ? user.schoolId : null],
+    );
+    if (!rows[0]) throw new NotFoundException('Provider-managed subscription not found');
+    await this.provider.cancelSubscription(rows[0].providerSubscriptionId);
+    await this.audit.record({
+      actorId: user.id,
+      action: 'billing.subscription.cancel',
+      entityType: 'subscription',
+      metadata: { provider: this.provider.name },
+    });
+    return { accepted: true, activationRule: 'local state changes only after verified webhook' };
   }
   private async process(eventId: string, e: BillingWebhookEvent) {
     await this.data.transaction(async (manager) => {
@@ -216,7 +266,6 @@ export class BillingService {
         if (
           [
             'SUBSCRIPTION_ACTIVATED',
-            'SUBSCRIPTION_CREATED',
             'SUBSCRIPTION_RENEWED',
             'PAYMENT_SUCCEEDED',
             'INVOICE_PAID',

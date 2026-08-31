@@ -86,7 +86,7 @@ export const envSchema = Joi.object({
   RAG_RETRIEVAL_STRATEGY_VERSION: Joi.string().min(1).max(64).default('hybrid-v1'),
   EMAIL_PROVIDER: Joi.string().allow('').default(''),
   EMAIL_FROM: Joi.string().allow('').default(''),
-  PAYMENT_PROVIDER: Joi.string().allow('').default(''),
+  PAYMENT_PROVIDER: Joi.string().valid('', 'test', 'safepay').default(''),
   PAYMENT_WEBHOOK_SECRET: Joi.string().allow('').default(''),
   BILLING_SUCCESS_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
@@ -97,6 +97,11 @@ export const envSchema = Joi.object({
   BILLING_PORTAL_RETURN_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:3000/settings/billing'),
+  SAFEPAY_ENVIRONMENT: Joi.string().valid('sandbox', 'production').default('sandbox'),
+  SAFEPAY_PUBLIC_KEY: Joi.string().allow('').default(''),
+  SAFEPAY_SECRET_KEY: Joi.string().allow('').default(''),
+  SAFEPAY_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  SAFEPAY_TIMEOUT_MS: Joi.number().integer().min(1000).max(60000).default(15000),
 }).custom((value: Record<string, unknown>, helpers) => {
   const min = Number(value.KB_CHUNK_MIN_TOKENS);
   const target = Number(value.KB_CHUNK_TARGET_TOKENS);
@@ -121,6 +126,13 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.PAYMENT_PROVIDER === 'test')
     return helpers.error('any.invalid', {
       message: 'The deterministic test payment provider is forbidden in production',
+    });
+  if (
+    value.PAYMENT_PROVIDER === 'safepay' &&
+    (!value.SAFEPAY_PUBLIC_KEY || !value.SAFEPAY_SECRET_KEY || !value.SAFEPAY_WEBHOOK_SECRET)
+  )
+    return helpers.error('any.invalid', {
+      message: 'Safepay requires public, secret, and webhook keys',
     });
   if (value.EMBEDDING_PROVIDER === 'openai' && value.EMBEDDING_MODEL !== 'text-embedding-3-small')
     return helpers.error('any.invalid', {

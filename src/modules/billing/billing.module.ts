@@ -12,8 +12,12 @@ import {
 } from './billing.entities';
 import { BillingService } from './billing.service';
 import { DeterministicTestPaymentProvider } from './deterministic-test-payment.provider';
+import { SafepayPaymentProvider } from './safepay-payment.provider';
+import { ConfigService } from '@nestjs/config';
+import { AuditModule } from '../audit/audit.module';
 @Module({
   imports: [
+    AuditModule,
     TypeOrmModule.forFeature([
       Plan,
       PlanProviderPrice,
@@ -25,8 +29,14 @@ import { DeterministicTestPaymentProvider } from './deterministic-test-payment.p
   ],
   controllers: [BillingController, AdminBillingController],
   providers: [
-    DeterministicTestPaymentProvider,
-    { provide: PAYMENT_PROVIDER, useExisting: DeterministicTestPaymentProvider },
+    {
+      provide: PAYMENT_PROVIDER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        config.get<string>('billing.provider') === 'safepay'
+          ? new SafepayPaymentProvider(config)
+          : new DeterministicTestPaymentProvider(config),
+    },
     BillingService,
   ],
 })

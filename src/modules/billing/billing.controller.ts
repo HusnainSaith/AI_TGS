@@ -35,16 +35,27 @@ export class BillingController {
   ) {
     return this.service.listTransactions(user);
   }
+  @Post('subscription/cancel')
+  @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Request provider cancellation; entitlement changes after webhook' })
+  cancel(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.cancel(user);
+  }
   @Public()
   @Post('webhooks/:provider')
-  @ApiHeader({ name: 'x-billing-signature', required: true })
-  @ApiOperation({ summary: 'Provider-signed webhook (no JWT)' })
+  @ApiHeader({ name: 'X-SFPY-SIGNATURE', required: true })
+  @ApiOperation({ summary: 'Provider-signed raw-body webhook (no JWT)' })
   webhook(
     @Param('provider') provider: string,
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-billing-signature') signature = '',
+    @Headers('x-sfpy-signature') safepaySignature = '',
+    @Headers('x-billing-signature') testSignature = '',
   ) {
-    return this.service.webhook(provider, req.rawBody ?? Buffer.alloc(0), signature);
+    return this.service.webhook(
+      provider,
+      req.rawBody ?? Buffer.alloc(0),
+      provider === 'safepay' ? safepaySignature : testSignature,
+    );
   }
 }
 

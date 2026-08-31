@@ -52,6 +52,10 @@ export class HealthController {
         productionProviderSelected:
           Boolean(this.config.get<string>('billing.provider')) &&
           this.config.get<string>('billing.provider') !== 'test',
+        environment:
+          this.config.get<string>('billing.provider') === 'safepay'
+            ? this.config.get<string>('billing.safepay.environment')
+            : null,
       },
       timestamp: new Date().toISOString(),
     };

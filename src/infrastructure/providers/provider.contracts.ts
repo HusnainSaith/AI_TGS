@@ -62,11 +62,12 @@ export interface BillingWebhookEvent {
 }
 export interface PaymentProvider {
   readonly name: string;
+  readonly requiresCustomer: boolean;
   createCustomer(input: {
     ownerType: BillingOwnerType;
     ownerId: string;
     email: string;
-  }): Promise<{ id: string }>;
+  }): Promise<{ id: string } | null>;
   createCheckoutSession(input: {
     customerId: string;
     priceId: string;

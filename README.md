@@ -156,8 +156,16 @@ Administrative operations are `POST /kb/document-versions/:id/embed`, `POST /kb/
 
 # Billing foundation
 
-Billing is provider-neutral and remains separate from product authorization. `Subscription`, `Plan`, `EntitlementService`, and period-scoped usage remain authoritative for access. No production gateway is selected (`PAYMENT_PROVIDER_DECISION_REQUIRED=true`); set `PAYMENT_PROVIDER=test` only in development/test to use the deterministic signed-webhook adapter.
+Billing is provider-neutral and remains separate from product authorization. `Subscription`, `Plan`, `EntitlementService`, and period-scoped usage remain authoritative for access. Safepay is selected for the Pakistan MVP (`PAYMENT_PROVIDER_DECISION_REQUIRED=false`) behind the existing adapter boundary; `PAYMENT_PROVIDER=test` remains development/test-only.
 
 Checkout accepts a plan ID, owner type, and idempotency key. Price IDs, currency, amounts, and redirect URLs are resolved by the server. Checkout never grants entitlement: only a verified webhook can synchronize provider state. Webhooks use the exact raw request bytes, database-enforced `(provider, provider_event_id)` idempotency, transactional processing, and provider-event-time stale update protection. Financial history uses integer minor units. Card numbers, CVV, credentials, authorization headers, and raw provider payloads are never persisted.
 
 Configuration: `PAYMENT_PROVIDER`, `PAYMENT_WEBHOOK_SECRET`, `BILLING_SUCCESS_URL`, `BILLING_CANCEL_URL`, and `BILLING_PORTAL_RETURN_URL`. The test provider is forbidden in production. A blank provider leaves billing checkout safely unavailable without affecting application health.
+
+## Safepay
+
+Set `PAYMENT_PROVIDER=safepay`, choose `SAFEPAY_ENVIRONMENT=sandbox|production`, and provide the empty-in-source `SAFEPAY_PUBLIC_KEY`, `SAFEPAY_SECRET_KEY`, and `SAFEPAY_WEBHOOK_SECRET` variables. Sandbox and live API hosts are selected explicitly. Safepay plans are created in its dashboard and their `plan_...` IDs are mapped to local plans through the admin plan-price API. Hosted subscription checkout uses a short-lived passport token and server-owned return/cancel URLs; redirects are UX-only.
+
+Safepay webhook schema `2.0.0` is received at `POST /api/v1/billing/webhooks/safepay`. The exact raw bytes are verified against `X-SFPY-SIGNATURE` using HMAC-SHA512 before parsing. Supported events are subscription creation/cancellation/end/resumption, recurring payment success/failure, and payment success/failure. Unknown events are safely ignored. Safepay cancellation is immediate/provider-defined; portal, in-place plan changes, and authoritative subscription fetch/reconciliation are explicitly unsupported because the current public API does not document them.
+
+For local webhook delivery Safepay requires a publicly reachable endpoint (HTTPS with TLS 1.2/1.3 for live). Configure that URL in the Safepay dashboard; do not hard-code tunnel URLs. Optional connectivity validation is `RUN_SAFEPAY_SANDBOX_TESTS=true npm run test:safepay:sandbox` and refuses non-sandbox environments. No card data crosses this backend.

@@ -9,6 +9,7 @@ import {
 @Injectable()
 export class DeterministicTestPaymentProvider implements PaymentProvider {
   readonly name = 'test';
+  readonly requiresCustomer = true;
   private readonly secret: string;
   constructor(config: ConfigService) {
     if (config.get('app.env') === 'production')

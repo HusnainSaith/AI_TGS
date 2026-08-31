@@ -93,6 +93,13 @@ export const configuration = () => ({
     cancelUrl: process.env.BILLING_CANCEL_URL ?? 'http://localhost:3000/billing/cancel',
     portalReturnUrl:
       process.env.BILLING_PORTAL_RETURN_URL ?? 'http://localhost:3000/settings/billing',
+    safepay: {
+      environment: process.env.SAFEPAY_ENVIRONMENT ?? 'sandbox',
+      publicKey: process.env.SAFEPAY_PUBLIC_KEY || '',
+      secretKey: process.env.SAFEPAY_SECRET_KEY || '',
+      webhookSecret: process.env.SAFEPAY_WEBHOOK_SECRET || '',
+      timeoutMs: Number(process.env.SAFEPAY_TIMEOUT_MS ?? 15000),
+    },
   },
   pdf: {
     renderer: 'pdf-lib',

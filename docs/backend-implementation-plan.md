@@ -58,4 +58,7 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 - [x] Raw-body signature verification and durable idempotent event processing
 - [x] Subscription synchronization, stale-event protection, transaction history
 - [x] Admin event/retry/mapping/reconciliation endpoints
-- [ ] Select and implement a production provider, then validate its sandbox
+- [x] Select and implement the supported Safepay production adapter surface
+- [x] Select Safepay and implement hosted subscription checkout, cancellation, HMAC webhooks, and normalized events
+- [ ] Configure Safepay sandbox credentials and run opt-in connectivity/webhook validation
+- [ ] Obtain an official documented subscription retrieval API before enabling Safepay reconciliation
