@@ -27,6 +27,11 @@ import { RetrievalEventChunk } from '../modules/retrieval/entities/retrieval-eve
 import { GenerationJob } from '../modules/ai-generation/entities/generation-job.entity';
 import { GenerationJobItem } from '../modules/ai-generation/entities/generation-job-item.entity';
 import { QuestionCitation } from '../modules/questions/entities/question-citation.entity';
+import { Plan } from '../modules/subscriptions/entities/plan.entity';
+import { Subscription } from '../modules/subscriptions/entities/subscription.entity';
+import { UsageCounter } from '../modules/subscriptions/entities/usage-counter.entity';
+import { UsageReservation } from '../modules/subscriptions/entities/usage-reservation.entity';
+import { UsageLedger } from '../modules/subscriptions/entities/usage-ledger.entity';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -62,6 +67,11 @@ export default new DataSource({
     GenerationJob,
     GenerationJobItem,
     QuestionCitation,
+    Plan,
+    Subscription,
+    UsageCounter,
+    UsageReservation,
+    UsageLedger,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

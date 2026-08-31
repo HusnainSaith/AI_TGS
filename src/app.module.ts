@@ -22,6 +22,7 @@ import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { EmbeddingsModule } from './modules/embeddings/embeddings.module';
 import { RetrievalModule } from './modules/retrieval/retrieval.module';
 import { AiGenerationModule } from './modules/ai-generation/ai-generation.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -45,6 +46,7 @@ import { AiGenerationModule } from './modules/ai-generation/ai-generation.module
     EmbeddingsModule,
     RetrievalModule,
     AiGenerationModule,
+    SubscriptionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -58,6 +58,12 @@ import { RetrievalEventChunk } from '../src/modules/retrieval/entities/retrieval
 import { RetrievalModule } from '../src/modules/retrieval/retrieval.module';
 import { School } from '../src/modules/schools/school.entity';
 import { User } from '../src/modules/users/user.entity';
+import { Plan } from '../src/modules/subscriptions/entities/plan.entity';
+import { Subscription } from '../src/modules/subscriptions/entities/subscription.entity';
+import {
+  BillingInterval,
+  SubscriptionStatus,
+} from '../src/modules/subscriptions/subscription.enums';
 
 const run = process.env.RUN_DB_TESTS === 'true' ? describe : describe.skip;
 run('Grounded AI generation with PostgreSQL (e2e)', () => {
@@ -77,6 +83,8 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
     topic: randomUUID(),
     document: randomUUID(),
     version: randomUUID(),
+    plan: randomUUID(),
+    subscription: randomUUID(),
   };
   const teacher: AuthenticatedUser = {
     id: id.teacher,
@@ -133,6 +141,33 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
       { ...other, name: 'other', passwordHash },
       { ...system, name: 'system', passwordHash },
     ]);
+    await db.getRepository(Plan).insert({
+      id: id.plan,
+      name: 'AI E2E Plan',
+      code: `AI_E2E_${id.plan.replaceAll('-', '')}`,
+      price: '0.00',
+      currency: 'USD',
+      billingInterval: BillingInterval.MONTHLY,
+      isActive: true,
+      isDefault: false,
+      limits: { aiQuestionsPerPeriod: 100 },
+      features: {},
+    });
+    await db.getRepository(Subscription).insert({
+      id: id.subscription,
+      userId: id.teacher,
+      schoolId: null,
+      planId: id.plan,
+      status: SubscriptionStatus.ACTIVE,
+      currentPeriodStart: new Date(Date.now() - 3600000),
+      currentPeriodEnd: new Date(Date.now() + 86400000),
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+      provider: null,
+      providerCustomerId: null,
+      providerSubscriptionId: null,
+      metadata: null,
+    });
     await db.getRepository(Board).insert({ id: id.board, name: `AI Board ${id.board}` });
     await db
       .getRepository(CurriculumClass)
@@ -229,6 +264,11 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
       );
       const jobs = jobRows.map((row: { id: string }) => row.id);
       if (jobs.length) {
+        await db.query(`DELETE FROM usage_ledger WHERE subscription_id=$1`, [id.subscription]);
+        await db.query(`DELETE FROM usage_reservations WHERE subscription_id=$1`, [
+          id.subscription,
+        ]);
+        await db.query(`DELETE FROM usage_counters WHERE subscription_id=$1`, [id.subscription]);
         await db.query(
           `UPDATE generation_job_items SET question_id=NULL WHERE generation_job_id=ANY($1::uuid[])`,
           [jobs],
@@ -269,6 +309,8 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
       await db.getRepository(Subject).delete(id.subject);
       await db.getRepository(CurriculumClass).delete(id.cls);
       await db.getRepository(Board).delete(id.board);
+      await db.getRepository(Subscription).delete(id.subscription);
+      await db.getRepository(Plan).delete(id.plan);
       await db.getRepository(User).delete([id.teacher, id.other, id.system]);
       await db.getRepository(School).delete(id.school);
     }

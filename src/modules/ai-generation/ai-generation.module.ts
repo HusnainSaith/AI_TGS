@@ -12,7 +12,7 @@ import { GenerationJobItem } from './entities/generation-job-item.entity';
 import { GenerationJob } from './entities/generation-job.entity';
 import { AI_GENERATION_PROVIDER } from './generation.contracts';
 import { GenerationCurriculumService } from './generation-curriculum.service';
-import { GenerationEntitlementService } from './generation-entitlement.service';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { GenerationOutputValidator } from './generation-output-validator.service';
 import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
@@ -22,6 +22,7 @@ import { OpenAiGenerationProvider } from './openai-generation.provider';
   imports: [
     TypeOrmModule.forFeature([GenerationJob, GenerationJobItem]),
     AuditModule,
+    SubscriptionsModule,
     EmbeddingsModule,
     QuestionsModule,
     RetrievalModule,
@@ -33,7 +34,6 @@ import { OpenAiGenerationProvider } from './openai-generation.provider';
     GenerationUnitExpander,
     GroundedPromptBuilder,
     GenerationOutputValidator,
-    GenerationEntitlementService,
     NearDuplicateDetector,
     {
       provide: AI_GENERATION_PROVIDER,

@@ -34,7 +34,7 @@ import {
   ValidatedCurriculum,
 } from './generation.contracts';
 import { GenerationCurriculumService } from './generation-curriculum.service';
-import { GenerationEntitlementService } from './generation-entitlement.service';
+import { GenerationEntitlementService } from '../subscriptions/generation-entitlement.service';
 import { GenerationOutputValidator } from './generation-output-validator.service';
 import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
@@ -63,10 +63,6 @@ export class AiGenerationService {
       throw new BadRequestException('Only REQUIRED grounding mode is enabled for MVP');
     const units = this.expander.expand(dto);
     const paths = await this.curriculum.validate(dto);
-    this.entitlements.check(
-      user,
-      units.reduce((sum, unit) => sum + unit.count, 0),
-    );
     const embedding = this.embeddingConfig.active();
     const job = await this.data.transaction(async (manager) => {
       const saved = await manager.getRepository(GenerationJob).save({
@@ -90,6 +86,7 @@ export class AiGenerationService {
         startedAt: null,
         completedAt: null,
       });
+      await this.entitlements.reserve(user, saved.id, saved.requestedCount, manager);
       await manager.getRepository(GenerationJobItem).save(
         units.map((unit) => ({
           generationJobId: saved.id,
@@ -410,6 +407,7 @@ export class AiGenerationService {
       metadata: { generatedCount: generated, failedCount: failed },
       outcome: status === GenerationJobStatus.FAILED ? 'FAILED' : 'SUCCEEDED',
     });
+    await this.entitlements.settle(jobId, user.id);
     return this.get(jobId, user);
   }
   async get(id: string, user: AuthenticatedUser) {
@@ -431,12 +429,14 @@ export class AiGenerationService {
     await this.scoped(jobId, user);
     const item = await this.items.findOneBy({ id: itemId, generationJobId: jobId });
     if (!item) throw new NotFoundException('Generation Job Item not found');
+    const attempt = item.retryCount + 1;
+    await this.entitlements.reserveRegeneration(user, item.id, attempt, item.requestedCount);
     await this.items.update(item.id, {
       status: GenerationItemStatus.QUEUED,
       questionId: null,
       generatedCount: 0,
       retrievalEventId: null,
-      retryCount: item.retryCount + 1,
+      retryCount: attempt,
       errorCode: null,
       rejectionReason: null,
       completedAt: null,
@@ -451,9 +451,11 @@ export class AiGenerationService {
       action: 'ai.generation.regenerate',
       entityType: 'generation_job_item',
       entityId: item.id,
-      metadata: { retryCount: item.retryCount + 1 },
+      metadata: { retryCount: attempt },
     });
-    return this.process(jobId, user);
+    const result = await this.process(jobId, user);
+    await this.entitlements.settleRegeneration(item.id, attempt, user.id);
+    return result;
   }
   async cancel(id: string, user: AuthenticatedUser) {
     const job = await this.scoped(id, user);
@@ -470,6 +472,7 @@ export class AiGenerationService {
       entityType: 'generation_job',
       entityId: id,
     });
+    await this.entitlements.settle(id, user.id);
   }
   private async scoped(id: string, user: AuthenticatedUser, relations = false) {
     const job = await this.jobs.findOne({

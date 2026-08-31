@@ -85,4 +85,5 @@ export const configuration = () => ({
     promptStrategyVersion: process.env.AI_PROMPT_STRATEGY_VERSION ?? 'grounded-question-v1',
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
   },
+  subscription: { reservationTtlMinutes: Number(process.env.USAGE_RESERVATION_TTL_MINUTES ?? 30) },
 });
