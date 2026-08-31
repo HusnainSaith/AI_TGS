@@ -65,3 +65,4 @@
 - `ENGINEERING_DECISION`: Context packing preserves rank and whole chunks within the evidence token budget and assigns stable `SRC_1...SRC_n` labels. It never truncates content.
 - `ENGINEERING_DECISION`: RetrievalEventChunk is normalized rather than JSON-only, retaining immutable rank, scores, content hash, and locator snapshot for later citation linkage.
 - `DEFERRED`: ANN indexes, reranking, prompt construction, generation jobs, QuestionCitation, and AI question generation.
+- `VALIDATION`: PostgreSQL 17.10 on Windows was extended in place with official pgvector v0.8.6 built using Visual Studio Build Tools 2022/MSVC x64. No second server or service restart was required; core and RAG migrations, vector dimension/cosine checks, indexed FTS, atomic publication, hybrid retrieval, tenant isolation, archival retention, and insufficient-knowledge behavior passed against real PostgreSQL.

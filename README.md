@@ -59,6 +59,36 @@ Local validation uses the documented `ai_test_generation` database. Core migrati
 
 Core migrations do not require pgvector. The verified local PostgreSQL 17 installation uses pgvector 0.8.6. Run `npm run migration:run:rag` to enable `vector` and create the independent embedding schema; core curriculum migrations remain separate.
 
+## PGVECTOR INSTALLATION ON WINDOWS — LOCAL POSTGRESQL
+
+This workstation was validated with PostgreSQL 17.10 installed at `C:\Program Files\PostgreSQL\17` and pgvector 0.8.6 from the official `pgvector/pgvector` repository. Match `PGROOT` to the installation reported by `pg_config`; do not install another PostgreSQL server just for pgvector.
+
+1. Install Visual Studio Build Tools 2022 with **Desktop development with C++**, the x64 MSVC compiler, and a Windows SDK. The full Visual Studio IDE is not required.
+2. Open an elevated **x64 Native Tools Command Prompt for VS 2022**.
+3. Verify the target PostgreSQL paths with `pg_config --version`, `pg_config --bindir`, `pg_config --libdir`, and `pg_config --sharedir`.
+4. Clone official pgvector outside this repository and select the required release:
+
+   ```cmd
+   cd /d %TEMP%
+   git clone --depth 1 --branch v0.8.6 https://github.com/pgvector/pgvector.git pgvector-0.8.6-build
+   cd pgvector-0.8.6-build
+   set "PGROOT=C:\Program Files\PostgreSQL\17"
+   nmake /F Makefile.win
+   nmake /F Makefile.win install
+   ```
+
+5. Confirm `%PGROOT%\lib\vector.dll`, `%PGROOT%\share\extension\vector.control`, and the versioned SQL files exist. A PostgreSQL service restart is normally unnecessary; restart only the detected PostgreSQL service if `pg_available_extensions` still cannot see `vector`.
+6. Check availability with `SELECT name, default_version, installed_version FROM pg_available_extensions WHERE name='vector';`.
+7. Let the independent migration chain enable and own the database schema:
+
+   ```powershell
+   npm run migration:show:rag
+   npm run migration:run:rag
+   npm run migration:show:rag
+   ```
+
+8. Verify enablement with `SELECT extname, extversion FROM pg_extension WHERE extname='vector';`. The expected result for this project is `vector | 0.8.6`.
+
 Docker Compose remains an optional alternative: `docker compose up -d` and `docker compose down`.
 
 The API base is `http://localhost:3000/api/v1`. Development Swagger UI is at `http://localhost:3000/api/docs` and is disabled in production. Health is `GET /api/v1/health`.

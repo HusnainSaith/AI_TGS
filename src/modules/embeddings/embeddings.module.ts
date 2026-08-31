@@ -35,6 +35,6 @@ import { OpenAIEmbeddingProvider } from './openai-embedding.provider';
     EmbeddingService,
     EmbeddingReindexService,
   ],
-  exports: [EmbeddingConfigService, EmbeddingService, TypeOrmModule],
+  exports: [EmbeddingConfigService, EmbeddingService, EMBEDDING_PROVIDER, TypeOrmModule],
 })
 export class EmbeddingsModule {}
