@@ -10,6 +10,15 @@ import {
 export class DeterministicTestPaymentProvider implements PaymentProvider {
   readonly name = 'test';
   readonly requiresCustomer = true;
+  readonly capabilities = {
+    checkout: 'SUPPORTED',
+    customerCreation: 'SUPPORTED',
+    portal: 'SUPPORTED',
+    cancellation: 'SUPPORTED',
+    planChange: 'SUPPORTED',
+    subscriptionRetrieval: 'UNSUPPORTED',
+    reconciliation: 'UNSUPPORTED',
+  } as const;
   private readonly secret: string;
   constructor(config: ConfigService) {
     if (config.get('app.env') === 'production')

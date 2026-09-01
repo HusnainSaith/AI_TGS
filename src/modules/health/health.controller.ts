@@ -48,13 +48,32 @@ export class HealthController {
       },
       billingProvider: {
         provider: this.config.get<string>('billing.provider') || null,
-        configured: Boolean(this.config.get<string>('billing.provider')),
+        configured:
+          this.config.get<string>('billing.provider') === 'test' ||
+          (this.config.get<string>('billing.provider') === 'safepay' &&
+            Boolean(
+              this.config.get<string>('billing.safepay.publicKey') &&
+              this.config.get<string>('billing.safepay.secretKey') &&
+              this.config.get<string>('billing.safepay.webhookSecret'),
+            )),
         productionProviderSelected:
           Boolean(this.config.get<string>('billing.provider')) &&
           this.config.get<string>('billing.provider') !== 'test',
         environment:
           this.config.get<string>('billing.provider') === 'safepay'
             ? this.config.get<string>('billing.safepay.environment')
+            : null,
+        capabilities:
+          this.config.get<string>('billing.provider') === 'safepay'
+            ? {
+                checkout: 'SUPPORTED',
+                customerCreation: 'UNSUPPORTED',
+                portal: 'UNSUPPORTED',
+                cancellation: 'SUPPORTED',
+                planChange: 'UNSUPPORTED',
+                subscriptionRetrieval: 'SUPPORTED',
+                reconciliation: 'SUPPORTED',
+              }
             : null,
       },
       timestamp: new Date().toISOString(),

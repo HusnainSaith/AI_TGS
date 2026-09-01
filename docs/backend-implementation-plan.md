@@ -4,6 +4,8 @@
 
 The NestJS modular monolith owns authentication, RBAC, users/schools, curriculum, questions/tests, asynchronous AI generation, governed Knowledge Base ingestion, hybrid retrieval and citations, subscriptions/usage/payments, PDF jobs, audit, storage, and operational health. PostgreSQL is the source of truth; pgvector and full-text search serve retrieval; Redis/BullMQ serves asynchronous work.
 
+Migration operators must use `npm run migration:run:all`: it applies foundational core migrations through malware scanning, then the RAG chain that creates `retrieval_events`, then grounded-generation and later core migrations. The two migration-history tables remain independent.
+
 The foundation implements configuration, HTTP/security conventions, PostgreSQL migrations, Redis queue registration, identity, schools, token-based authentication, RBAC, tenant context, audit persistence, health, Swagger, and external-provider contracts. The completed curriculum phase adds production CRUD APIs, hierarchy validation, pagination/filtering/safe sorting, archive lifecycle, transactional audits, verified-email policy, and database-backed integration coverage. It deliberately does not implement feature-complete question/test, RAG, ingestion/OCR, AI, PDF, billing, or school-owned curriculum workflows.
 
 ## Domain and dependency graph
@@ -61,4 +63,6 @@ No student test taking/grading/analytics, A/B/C/D versions, bulk question import
 - [x] Select and implement the supported Safepay production adapter surface
 - [x] Select Safepay and implement hosted subscription checkout, cancellation, HMAC webhooks, and normalized events
 - [ ] Configure Safepay sandbox credentials and run opt-in connectivity/webhook validation
-- [ ] Obtain an official documented subscription retrieval API before enabling Safepay reconciliation
+- [x] Align cancellation to `/client/subscriptions/v1/{id}/cancel` and normalize documented subscription retrieval
+- [x] Enable Safepay reconciliation with authoritative `updated_at` stale protection
+- [x] Review subscription update/search and `/client/plans/v1` APIs while retaining trusted local plan mapping

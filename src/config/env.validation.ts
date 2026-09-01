@@ -128,6 +128,7 @@ export const envSchema = Joi.object({
       message: 'The deterministic test payment provider is forbidden in production',
     });
   if (
+    value.APP_ENV === 'production' &&
     value.PAYMENT_PROVIDER === 'safepay' &&
     (!value.SAFEPAY_PUBLIC_KEY || !value.SAFEPAY_SECRET_KEY || !value.SAFEPAY_WEBHOOK_SECRET)
   )

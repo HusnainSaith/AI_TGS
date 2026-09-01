@@ -60,9 +60,41 @@ export interface BillingWebhookEvent {
   cancelAtPeriodEnd?: boolean;
   transaction?: { id: string; amountMinor: number; currency: string; status: string };
 }
+export type NormalizedBillingSubscriptionStatus =
+  | 'TRIALING'
+  | 'ACTIVE'
+  | 'PAST_DUE'
+  | 'UNPAID'
+  | 'CANCELED'
+  | 'INCOMPLETE'
+  | 'INCOMPLETE_EXPIRED'
+  | 'ENDED'
+  | 'PAUSED';
+export interface BillingSubscription {
+  providerSubscriptionId: string;
+  status: NormalizedBillingSubscriptionStatus;
+  providerPlanId?: string;
+  providerCustomerId?: string;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  cancelAtPeriodEnd?: boolean;
+  cancelledAt?: Date;
+  providerUpdatedAt: Date;
+}
+export type PaymentProviderCapability = 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED';
+export interface PaymentProviderCapabilities {
+  checkout: PaymentProviderCapability;
+  customerCreation: PaymentProviderCapability;
+  portal: PaymentProviderCapability;
+  cancellation: PaymentProviderCapability;
+  planChange: PaymentProviderCapability;
+  subscriptionRetrieval: PaymentProviderCapability;
+  reconciliation: PaymentProviderCapability;
+}
 export interface PaymentProvider {
   readonly name: string;
   readonly requiresCustomer: boolean;
+  readonly capabilities: PaymentProviderCapabilities;
   createCustomer(input: {
     ownerType: BillingOwnerType;
     ownerId: string;
@@ -82,6 +114,6 @@ export interface PaymentProvider {
   }): Promise<{ url: string }>;
   cancelSubscription(id: string): Promise<void>;
   changeSubscriptionPlan(id: string, priceId: string): Promise<void>;
-  getSubscription(id: string): Promise<Omit<BillingWebhookEvent, 'id' | 'type'>>;
+  getSubscription(id: string): Promise<BillingSubscription>;
   verifyAndParseWebhook(payload: Buffer, signature: string): BillingWebhookEvent;
 }

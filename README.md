@@ -18,7 +18,7 @@ The secure Knowledge Base source foundation is available at `/api/v1/kb`. System
 ```bash
 npm install
 copy .env.example .env
-npm run migration:run
+npm run migration:run:all
 npm run start:dev
 ```
 
@@ -52,12 +52,12 @@ Local validation uses the documented `ai_test_generation` database. Core migrati
    In pgAdmin, right-click **Databases**, choose **Create → Database**, and use the same name.
 
 3. Set `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, and `DATABASE_SSL=false` in `.env`.
-4. Run `npm run migration:show`, then `npm run migration:run`.
+4. Run `npm run migration:show` and `npm run migration:show:rag`, then `npm run migration:run:all`.
 5. Start the API with `npm run start:dev`.
 6. Verify `GET http://localhost:3000/api/v1/health`.
 7. Open `http://localhost:3000/api/docs` during development.
 
-Core migrations do not require pgvector. The verified local PostgreSQL 17 installation uses pgvector 0.8.6. Run `npm run migration:run:rag` to enable `vector` and create the independent embedding schema; core curriculum migrations remain separate.
+The first seven core migrations through `MalwareScanning1725700000000` do not require pgvector. `PublicationRetrieval1725900000000` creates `retrieval_events`, which `GroundedAiGeneration1726000000000` references. Consequently the required order for fresh or partially migrated databases is foundational core migrations, all RAG migrations, then remaining core migrations. Use the fail-fast `npm run migration:run:all` command; it invokes the existing TypeORM data sources without synchronization, manual SQL, or migration-history changes. The verified local PostgreSQL 17 installation uses pgvector 0.8.6.
 
 ## PGVECTOR INSTALLATION ON WINDOWS — LOCAL POSTGRESQL
 
@@ -120,7 +120,7 @@ npm run test:e2e
 npm run format
 ```
 
-Migrations use `npm run migration:run`, `npm run migration:revert`, and `npm run migration:generate -- src/database/migrations/Name`.
+Migrations use `npm run migration:run:all` for dependency-safe application, `npm run migration:revert`, and `npm run migration:generate -- src/database/migrations/Name`.
 Use `npm run migration:show` for core state and `npm run migration:show:rag` for optional RAG state.
 
 ## Structure
@@ -166,6 +166,20 @@ Configuration: `PAYMENT_PROVIDER`, `PAYMENT_WEBHOOK_SECRET`, `BILLING_SUCCESS_UR
 
 Set `PAYMENT_PROVIDER=safepay`, choose `SAFEPAY_ENVIRONMENT=sandbox|production`, and provide the empty-in-source `SAFEPAY_PUBLIC_KEY`, `SAFEPAY_SECRET_KEY`, and `SAFEPAY_WEBHOOK_SECRET` variables. Sandbox and live API hosts are selected explicitly. Safepay plans are created in its dashboard and their `plan_...` IDs are mapped to local plans through the admin plan-price API. Hosted subscription checkout uses a short-lived passport token and server-owned return/cancel URLs; redirects are UX-only.
 
-Safepay webhook schema `2.0.0` is received at `POST /api/v1/billing/webhooks/safepay`. The exact raw bytes are verified against `X-SFPY-SIGNATURE` using HMAC-SHA512 before parsing. Supported events are subscription creation/cancellation/end/resumption, recurring payment success/failure, and payment success/failure. Unknown events are safely ignored. Safepay cancellation is immediate/provider-defined; portal, in-place plan changes, and authoritative subscription fetch/reconciliation are explicitly unsupported because the current public API does not document them.
+Safepay webhook schema `2.0.0` is received at `POST /api/v1/billing/webhooks/safepay`. The exact raw bytes are verified against `X-SFPY-SIGNATURE` using HMAC-SHA512 before parsing. Supported events are subscription creation/cancellation/end/pause/resumption, recurring payment success/failure, and payment success/failure. Unknown events are safely ignored. Paused maps to the existing non-entitled `PAST_DUE` behavior; resumed maps to `ACTIVE`. Processing is synchronous but contains no provider network call and persists through the database transaction well inside the documented acknowledgement window.
+
+Current official APIs use `GET /client/subscriptions/v1/{id}` for authoritative retrieval and `POST /client/subscriptions/v1/{id}/cancel` for immediate cancellation. Reconciliation compares the documented provider update timestamp and will not overwrite newer webhook state. The passport token is cached in memory for 110 seconds, leaving a ten-second margin inside its approximately two-minute lifetime, with concurrent refresh coalescing. GET may retry once after a transient failure; cancellation is not blindly retried. Search (`GET /client/subscriptions/v1/search`) and update (`PUT /client/subscriptions/v1/{id}`) are documented but not exposed because the current reconciliation flow does not need search and update does not explicitly support plan replacement. Portal and in-place plan changes remain unsupported.
+
+| Safepay capability                                           | Status              | Adapter decision                                                                  |
+| ------------------------------------------------------------ | ------------------- | --------------------------------------------------------------------------------- |
+| checkout                                                     | SUPPORTED           | Hosted subscription checkout with server-owned plan and redirects                 |
+| cancelSubscription                                           | SUPPORTED           | Documented immediate POST; no assumed already-canceled idempotency                |
+| getSubscription                                              | SUPPORTED           | Documented GET, normalized for reconciliation                                     |
+| searchSubscriptions                                          | PARTIALLY_SUPPORTED | Provider API documented; intentionally internal/unimplemented                     |
+| updateSubscription                                           | PARTIALLY_SUPPORTED | API/fields documented; no generic public mutation surface                         |
+| changeSubscriptionPlan                                       | UNSUPPORTED         | Documented update fields do not specify plan replacement                          |
+| billingPortal                                                | UNSUPPORTED         | No documented portal contract                                                     |
+| reconciliation                                               | SUPPORTED           | Per-subscription authoritative GET with stale protection                          |
+| planCreate / planGet / planUpdate / planSearch / planArchive | PARTIALLY_SUPPORTED | Provider APIs documented; dashboard/admin mapping remains the commercial workflow |
 
 For local webhook delivery Safepay requires a publicly reachable endpoint (HTTPS with TLS 1.2/1.3 for live). Configure that URL in the Safepay dashboard; do not hard-code tunnel URLs. Optional connectivity validation is `RUN_SAFEPAY_SANDBOX_TESTS=true npm run test:safepay:sandbox` and refuses non-sandbox environments. No card data crosses this backend.

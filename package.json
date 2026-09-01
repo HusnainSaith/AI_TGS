@@ -19,6 +19,8 @@
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-e2e.json",
     "test:safepay:sandbox": "ts-node scripts/validate-safepay-sandbox.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+    "migration:run:foundation": "typeorm-ts-node-commonjs migration:run -d src/database/data-source-foundation.ts",
+    "migration:run:all": "npm run migration:run:foundation && npm run migration:run:rag && npm run migration:run",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
     "migration:run:rag": "typeorm-ts-node-commonjs migration:run -d src/database/data-source-rag.ts",

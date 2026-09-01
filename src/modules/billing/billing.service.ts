@@ -16,6 +16,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuditService } from '../audit/audit.service';
 import { BillingProviderError } from './billing-provider.error';
 import {
+  BillingSubscription,
   BillingWebhookEvent,
   PAYMENT_PROVIDER,
   PaymentProvider,
@@ -263,6 +264,7 @@ export class BillingService {
         if (e.periodStart) target.currentPeriodStart = e.periodStart;
         if (e.periodEnd) target.currentPeriodEnd = e.periodEnd;
         if (e.cancelAtPeriodEnd !== undefined) target.cancelAtPeriodEnd = e.cancelAtPeriodEnd;
+        if (e.status) target.status = this.localStatus(e.status);
         if (
           [
             'SUBSCRIPTION_ACTIVATED',
@@ -332,7 +334,153 @@ export class BillingService {
     });
     return this.events.findOneByOrFail({ id });
   }
-  reconcile() {
-    return { available: false, reason: 'No production payment provider selected' };
+  async reconcile() {
+    this.activeProvider();
+    const subscriptions: Array<{
+      id: string;
+      providerSubscriptionId: string;
+      providerStateUpdatedAt: Date | null;
+    }> = await this.data.query(
+      `SELECT id,provider_subscription_id "providerSubscriptionId",provider_state_updated_at "providerStateUpdatedAt"
+       FROM subscriptions WHERE origin='PROVIDER' AND provider=$1 AND provider_subscription_id IS NOT NULL`,
+      [this.provider.name],
+    );
+    const results: Array<{ subscriptionId: string; outcome: string; errorCode?: string }> = [];
+    for (const local of subscriptions) {
+      try {
+        const remote = await this.provider.getSubscription(local.providerSubscriptionId);
+        const outcome = await this.reconcileOne(local.id, remote);
+        results.push({ subscriptionId: local.id, outcome });
+      } catch (error) {
+        results.push({
+          subscriptionId: local.id,
+          outcome: 'FAILED',
+          errorCode: error instanceof BillingProviderError ? error.code : 'BILLING_PROVIDER_ERROR',
+        });
+      }
+    }
+    return {
+      available: true,
+      provider: this.provider.name,
+      checked: subscriptions.length,
+      updated: results.filter((item) => item.outcome === 'UPDATED').length,
+      unchanged: results.filter((item) => item.outcome === 'UNCHANGED').length,
+      stale: results.filter((item) => item.outcome === 'STALE_PROVIDER_STATE').length,
+      failed: results.filter((item) => item.outcome === 'FAILED').length,
+      results,
+    };
+  }
+
+  private reconcileOne(localId: string, remote: BillingSubscription) {
+    return this.data.transaction(async (manager) => {
+      const rows: Array<{
+        id: string;
+        planId: string;
+        status: SubscriptionStatus;
+        currentPeriodStart: Date;
+        currentPeriodEnd: Date;
+        cancelAtPeriodEnd: boolean;
+        cancelledAt: Date | null;
+        providerCustomerId: string | null;
+        providerStateUpdatedAt: Date | null;
+      }> = await manager.query(
+        `SELECT id,plan_id "planId",status,current_period_start "currentPeriodStart",
+         current_period_end "currentPeriodEnd",cancel_at_period_end "cancelAtPeriodEnd",
+         cancelled_at "cancelledAt",provider_customer_id "providerCustomerId",
+         provider_state_updated_at "providerStateUpdatedAt"
+         FROM subscriptions WHERE id=$1 FOR UPDATE`,
+        [localId],
+      );
+      const local = rows[0];
+      if (!local) return 'UNCHANGED';
+      if (
+        local.providerStateUpdatedAt &&
+        remote.providerUpdatedAt < new Date(local.providerStateUpdatedAt)
+      )
+        return 'STALE_PROVIDER_STATE';
+      let planId = local.planId;
+      if (remote.providerPlanId) {
+        const mapping = await manager.getRepository(PlanProviderPrice).findOneBy({
+          provider: this.provider.name,
+          providerPriceId: remote.providerPlanId,
+          active: true,
+        });
+        if (!mapping)
+          throw new BillingProviderError(
+            'BILLING_PROVIDER_ERROR',
+            'Safepay subscription plan is not mapped locally',
+          );
+        planId = mapping.planId;
+      }
+      const status = this.localStatus(remote.status);
+      const cancelAtPeriodEnd = remote.cancelAtPeriodEnd ?? local.cancelAtPeriodEnd;
+      const cancelledAt = remote.cancelledAt ?? local.cancelledAt;
+      const providerCustomerId = remote.providerCustomerId ?? local.providerCustomerId;
+      const unchanged =
+        planId === local.planId &&
+        status === local.status &&
+        remote.currentPeriodStart.getTime() === new Date(local.currentPeriodStart).getTime() &&
+        remote.currentPeriodEnd.getTime() === new Date(local.currentPeriodEnd).getTime() &&
+        cancelAtPeriodEnd === local.cancelAtPeriodEnd &&
+        (cancelledAt?.getTime() ?? null) === (local.cancelledAt?.getTime() ?? null) &&
+        providerCustomerId === local.providerCustomerId &&
+        remote.providerUpdatedAt.getTime() ===
+          (local.providerStateUpdatedAt?.getTime() ?? Number.NaN);
+      if (unchanged) return 'UNCHANGED';
+      await manager.query(
+        `UPDATE subscriptions SET plan_id=$2,status=$3,current_period_start=$4,current_period_end=$5,
+         cancel_at_period_end=$6,cancelled_at=$7,provider_customer_id=$8,provider_state_updated_at=$9,updated_at=now()
+         WHERE id=$1`,
+        [
+          local.id,
+          planId,
+          status,
+          remote.currentPeriodStart,
+          remote.currentPeriodEnd,
+          cancelAtPeriodEnd,
+          cancelledAt,
+          providerCustomerId,
+          remote.providerUpdatedAt,
+        ],
+      );
+      await this.audit.record(
+        {
+          action: 'billing.subscription.reconciled',
+          entityType: 'subscription',
+          entityId: local.id,
+          metadata: {
+            provider: this.provider.name,
+            providerSubscriptionId: remote.providerSubscriptionId,
+            status,
+          },
+        },
+        manager,
+      );
+      return 'UPDATED';
+    });
+  }
+
+  private localStatus(value: string) {
+    const statuses: Record<string, SubscriptionStatus> = {
+      TRAILING: SubscriptionStatus.TRIALING,
+      TRIALING: SubscriptionStatus.TRIALING,
+      ACTIVE: SubscriptionStatus.ACTIVE,
+      PAST_DUE: SubscriptionStatus.PAST_DUE,
+      UNPAID: SubscriptionStatus.PAST_DUE,
+      INCOMPLETE: SubscriptionStatus.PAST_DUE,
+      PAUSED: SubscriptionStatus.PAST_DUE,
+      CANCELED: SubscriptionStatus.CANCELLED,
+      CANCELLED: SubscriptionStatus.CANCELLED,
+      INCOMPLETE_EXPIRED: SubscriptionStatus.EXPIRED,
+      ENDED: SubscriptionStatus.EXPIRED,
+      EXPIRED: SubscriptionStatus.EXPIRED,
+    };
+    const status = statuses[value.toUpperCase()];
+    if (!status)
+      throw new BillingProviderError(
+        'BILLING_PROVIDER_ERROR',
+        'Payment provider returned an unsupported subscription status',
+      );
+    return status;
   }
 }

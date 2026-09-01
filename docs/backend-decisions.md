@@ -19,6 +19,8 @@
 | DEFERRED_TO_RAG_PHASE | Embedding dimensionality (`vector(n)`) and model migration strategy require a selected embedding provider/model.                                                                              |
 | FUTURE_SCOPE          | Student workflows, multiple test versions, imports, marketplace, advanced analytics/retrieval experiments, multimodal OCR, collaboration, and offline generation.                             |
 
+Migration execution is dependency-ordered rather than simply core-first: core migrations through `MalwareScanning1725700000000`, then RAG through `PublicationRetrieval1725900000000`, then core beginning with `GroundedAiGeneration1726000000000`. This is required because grounded-generation lineage references `retrieval_events`. `npm run migration:run:all` orchestrates those existing TypeORM chains and fails fast without schema synchronization or manual migration records.
+
 ## Manual Question Bank decisions
 
 - `ENGINEERING_DECISION`: Public creation always stamps `MANUAL`, `APPROVED`, `NOT_APPLICABLE`, nullable generation/retrieval references, and server-derived ownership. Future AI uses the same tables through an internal path.
@@ -111,7 +113,7 @@
 - Manual subscriptions remain valid with nullable provider identifiers and explicit `MANUAL` origin. Provider-managed records use `PROVIDER` origin.
 - Payment failure maps to `PAST_DUE`; cancellation-at-period-end preserves active state until a later provider cancellation/expiration event. Upgrades, downgrades, and renewals preserve usage history because usage remains period-scoped and is never reset by billing.
 - Safe normalized webhook metadata is retained for retry/audit; exact raw payloads and PCI/card data are not stored. Transaction amounts are integer minor units.
-- Reconciliation reports unavailable until a real provider capable of authoritative subscription reads is selected. The deterministic provider is local/test-only.
+- Reconciliation is unavailable for the deterministic provider. Safepay reconciliation uses its documented authoritative subscription read and only repairs commercial subscription fields.
 
 ## Safepay adapter (2026-08-31)
 
@@ -120,5 +122,9 @@
 - Sandbox/live hosts are `https://sandbox.api.getsafepay.com` and `https://api.getsafepay.com`; subscription hosted checkout uses the corresponding Safepay checkout host and dashboard-created plan IDs.
 - Webhook version `2.0.0` uses exact-body HMAC-SHA512 hex verification from `X-SFPY-SIGNATURE`. Event token supplies DB replay/idempotency identity and Safepay `created_at` supplies stale-event ordering.
 - `subscription.created` creates only a non-entitled provider record. Entitlement becomes active after verified recurring success/resumption. Failure maps to `PAST_DUE`; canceled/ended map to `CANCELLED`/`EXPIRED`.
-- Immediate cancellation is supported. Portal, plan mutation, and authoritative subscription fetch/reconciliation remain `BILLING_PROVIDER_OPERATION_UNSUPPORTED` because current public Safepay documentation does not define those contracts.
+- On 2026-09-01 the official API was revalidated and the prior limitation was superseded: retrieval is `GET /client/subscriptions/v1/{id}`, search is `GET /client/subscriptions/v1/search`, update is `PUT /client/subscriptions/v1/{id}`, and immediate cancellation is `POST /client/subscriptions/v1/{id}/cancel`. Retrieval now powers per-record reconciliation with provider `updated_at` stale protection. Search remains internal/unimplemented because it is unnecessary for that flow.
+- The documented update fields cover anchors, trials, cancellation-at-period-end, pause, expiry/cycle count, and proration behavior, but do not specify plan replacement. Therefore in-place plan change and billing portal remain `BILLING_PROVIDER_OPERATION_UNSUPPORTED`; no payload semantics are inferred from PUT alone.
+- Official plan create/find/update/search/archive APIs exist under `/client/plans/v1`. They are intentionally not automated: provider plans remain dashboard-managed commercial resources mapped by SYSTEM_ADMIN to authoritative local Plans.
+- Documented `TRAILING` is normalized to `TRIALING`; `UNPAID`, `INCOMPLETE`, and `PAUSED` use non-entitled local `PAST_DUE`; `INCOMPLETE_EXPIRED` and `ENDED` use `EXPIRED`; canceled spellings use `CANCELLED`. Resume restores `ACTIVE`. No enum/schema expansion is needed.
+- Passport tokens are cached for 110 seconds with a ten-second expiry margin and single-flight refresh. Safe GET retrieval may retry once; state-changing cancel is not automatically retried because already-canceled idempotency is not guaranteed.
 - No schema migration is required; existing provider IDs, normalized event JSON, minor-unit transactions, and plan mapping fields cover Safepay.
