@@ -116,6 +116,8 @@ export class IngestionProcessorService {
         await this.updateStep(jobId, token, IngestionStep.OCR, { ocrRequired: true });
         if (!this.ocr.available) throw new Error('OCR_PROVIDER_NOT_CONFIGURED');
         const pages = await this.ocr.extractPdf(source);
+        if (pages.length > (this.config.get<number>('ingestion.maxPdfPages') ?? 1000))
+          throw new Error('PARSER_RESOURCE_LIMIT_EXCEEDED');
         extraction = {
           blocks: pages.map((page) => ({
             text: page.text,
@@ -128,6 +130,13 @@ export class IngestionProcessorService {
         };
         ocrUsed = true;
       }
+      const extractedCharacters = extraction.blocks.reduce((sum, b) => sum + b.text.length, 0);
+      if (
+        extractedCharacters >
+          (this.config.get<number>('ingestion.maxExtractedCharacters') ?? 5_000_000) ||
+        (extraction.pageCount ?? 0) > (this.config.get<number>('ingestion.maxPdfPages') ?? 1000)
+      )
+        throw new Error('PARSER_RESOURCE_LIMIT_EXCEEDED');
       await this.updateStep(jobId, token, IngestionStep.NORMALIZATION);
       const blocks = extraction.blocks
         .map((block) => ({ ...block, text: this.normalizer.normalize(block.text) }))
@@ -135,13 +144,15 @@ export class IngestionProcessorService {
       const normalizedCharacters = blocks.reduce((sum, b) => sum + b.text.length, 0);
       await this.updateStep(jobId, token, IngestionStep.CHUNKING);
       const chunks = this.chunking.chunk(blocks);
+      if (chunks.length > (this.config.get<number>('ingestion.maxChunks') ?? 10_000))
+        throw new Error('PARSER_RESOURCE_LIMIT_EXCEEDED');
       await this.updateStep(jobId, token, IngestionStep.VERIFICATION);
       this.completeness.verify(normalizedCharacters, chunks);
       const metrics = {
         sourceType: document.sourceType,
         fileSize: version.fileSize,
         pageCount: extraction.pageCount ?? null,
-        extractedCharacters: extraction.blocks.reduce((sum, b) => sum + b.text.length, 0),
+        extractedCharacters,
         normalizedCharacters,
         chunkCount: chunks.length,
         estimatedTokens: chunks.reduce((sum, c) => sum + c.estimatedTokenCount, 0),
@@ -242,6 +253,9 @@ export class IngestionProcessorService {
       .update()
       .set({
         currentStep: step,
+        leaseExpiresAt: new Date(
+          Date.now() + this.config.getOrThrow<number>('ingestion.staleMinutes') * 60_000,
+        ),
         ...(metrics && {
           metrics: () => `metrics || '${JSON.stringify(metrics).replaceAll("'", "''")}'::jsonb`,
         }),
@@ -271,6 +285,7 @@ export class IngestionProcessorService {
       'COMPLETENESS_CHECK_FAILED',
       'STORAGE_READ_FAILED',
       'UNSUPPORTED_SOURCE_TYPE',
+      'PARSER_RESOURCE_LIMIT_EXCEEDED',
     ]);
     return allowed.has(code) ? code : 'INGESTION_FAILED';
   }
@@ -336,6 +351,7 @@ export class IngestionProcessorService {
       EMPTY_DOCUMENT: 'The document contains no extractable content',
       COMPLETENESS_CHECK_FAILED: 'Extracted content did not pass completeness verification',
       STORAGE_READ_FAILED: 'The quarantined source could not be read',
+      PARSER_RESOURCE_LIMIT_EXCEEDED: 'The source exceeds safe processing limits',
     };
     return messages[code] ?? 'Ingestion processing failed';
   }

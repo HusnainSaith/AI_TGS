@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { EMAIL_PROVIDER, EmailProvider } from '../../infrastructure/providers/provider.contracts';
 import { Inject } from '@nestjs/common';
@@ -16,6 +16,7 @@ import { DeliveryStatus, MANDATORY_EMAIL_TYPES, NotificationType } from './notif
 import { renderEmail } from './email-templates';
 import { UpdatePreferencesDto } from './notification.dto';
 import { EmailProviderError } from './nodemailer-email.provider';
+import { decryptEmailTemplateData, encryptEmailTemplateData } from './email-token-crypto';
 
 @Injectable()
 export class NotificationsService {
@@ -74,7 +75,7 @@ export class NotificationsService {
               channel: 'EMAIL',
               recipient: user.email,
               encryptedTemplateData: input.secureEmailMetadata
-                ? this.encrypt(input.secureEmailMetadata)
+                ? this.encrypt(input.secureEmailMetadata, `${input.type}:${input.userId}`)
                 : null,
               status: DeliveryStatus.PENDING,
               attemptCount: 0,
@@ -144,25 +145,29 @@ export class NotificationsService {
     return saved;
   }
   async process(batch = 20) {
-    const ids: string[] = await this.data.transaction(async (m) => {
+    const claims: Array<{ id: string; token: string }> = await this.data.transaction(async (m) => {
       const rows: Array<{ id: string }> = await m.query(
         `SELECT id FROM notification_deliveries WHERE ((status='PENDING' AND next_attempt_at<=now()) OR (status='PROCESSING' AND processing_started_at<now()-interval '10 minutes')) AND attempt_count<max_attempts ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT $1`,
         [batch],
       );
-      for (const row of rows)
+      const claimed: Array<{ id: string; token: string }> = [];
+      for (const row of rows) {
+        const token = randomUUID();
         await m.update(NotificationDelivery, row.id, {
           status: DeliveryStatus.PROCESSING,
-          processingToken: randomUUID(),
+          processingToken: token,
           processingStartedAt: new Date(),
         });
-      return rows.map((r) => r.id);
+        claimed.push({ id: row.id, token });
+      }
+      return claimed;
     });
-    for (const id of ids) await this.deliver(id);
-    return { claimed: ids.length };
+    for (const claim of claims) await this.deliver(claim.id, claim.token);
+    return { claimed: claims.length };
   }
-  private async deliver(id: string) {
+  private async deliver(id: string, processingToken: string) {
     const delivery = await this.deliveries.findOne({
-      where: { id },
+      where: { id, processingToken, status: DeliveryStatus.PROCESSING },
       relations: { notification: true },
     });
     if (!delivery || delivery.status !== DeliveryStatus.PROCESSING) return;
@@ -176,7 +181,10 @@ export class NotificationsService {
           delivery.notification.message,
           {
             ...delivery.notification.metadata,
-            ...this.decrypt(delivery.encryptedTemplateData),
+            ...this.decrypt(
+              delivery.encryptedTemplateData,
+              `${delivery.notification.type}:${delivery.notification.userId}`,
+            ),
           },
           delivery.recipient,
         ),
@@ -198,7 +206,21 @@ export class NotificationsService {
     }
     delivery.processingToken = null;
     delivery.processingStartedAt = null;
-    await this.deliveries.save(delivery);
+    const updated = await this.deliveries.update(
+      { id: delivery.id, processingToken },
+      {
+        status: delivery.status,
+        attemptCount: delivery.attemptCount,
+        nextAttemptAt: delivery.nextAttemptAt,
+        processingToken: null,
+        processingStartedAt: null,
+        lastAttemptAt: delivery.lastAttemptAt,
+        sentAt: delivery.sentAt,
+        failedAt: delivery.failedAt,
+        errorCode: delivery.errorCode,
+      },
+    );
+    if (!updated.affected) return;
     await this.audit.record({
       action:
         delivery.status === DeliveryStatus.SENT
@@ -219,10 +241,13 @@ export class NotificationsService {
   async retry(id: string, actorId: string) {
     const row = await this.deliveries.findOneBy({ id });
     if (!row) throw new NotFoundException();
-    if (row.status !== DeliveryStatus.FAILED || row.attemptCount >= row.maxAttempts)
+    if (row.status !== DeliveryStatus.FAILED)
       throw new ConflictException('Delivery is not retryable');
     row.status = DeliveryStatus.PENDING;
+    row.attemptCount = 0;
     row.nextAttemptAt = new Date();
+    row.failedAt = null;
+    row.errorCode = null;
     await this.deliveries.save(row);
     await this.audit.record({
       actorId,
@@ -236,31 +261,17 @@ export class NotificationsService {
     return this.email.verify();
   }
   private encryptionKey() {
+    const configured = this.config.get<string>('email.tokenEncryptionKey');
+    if (configured) return Buffer.from(configured, 'base64');
     return createHash('sha256')
-      .update(this.config.getOrThrow<string>('JWT_ACCESS_SECRET'))
+      .update(`notification-email-v1:${this.config.getOrThrow<string>('JWT_ACCESS_SECRET')}`)
       .digest();
   }
-  private encrypt(value: Record<string, unknown>) {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), iv);
-    const encrypted = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
-    return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
+  private encrypt(value: Record<string, unknown>, binding: string) {
+    return encryptEmailTemplateData(value, this.encryptionKey(), binding);
   }
-  private decrypt(value: string | null) {
+  private decrypt(value: string | null, binding: string) {
     if (!value) return {};
-    const [iv, tag, encrypted] = value.split('.');
-    if (!iv || !tag || !encrypted) throw new Error('Invalid encrypted template data');
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.encryptionKey(),
-      Buffer.from(iv, 'base64url'),
-    );
-    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-    return JSON.parse(
-      Buffer.concat([
-        decipher.update(Buffer.from(encrypted, 'base64url')),
-        decipher.final(),
-      ]).toString('utf8'),
-    ) as Record<string, unknown>;
+    return decryptEmailTemplateData(value, this.encryptionKey(), binding);
   }
 }

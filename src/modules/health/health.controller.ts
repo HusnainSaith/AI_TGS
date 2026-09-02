@@ -8,6 +8,9 @@ export class HealthController {
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
   ) {}
+  @Public() @Get('live') live() {
+    return { status: 'ok', application: 'up', timestamp: new Date().toISOString() };
+  }
   @Public() @Get() async check() {
     let database: 'up' | 'down' = 'down';
     let pgvector: { status: 'up' | 'down'; version: string | null } = {
@@ -54,6 +57,14 @@ export class HealthController {
             this.config.get<string>('email.smtp.host') &&
             this.config.get<string>('email.fromEmail'),
           ),
+      },
+      ocrProvider: {
+        provider: this.config.get<string>('ingestion.ocrProvider') ?? 'none',
+        configured: this.config.get<string>('ingestion.ocrProvider') !== 'none',
+      },
+      malwareScanner: {
+        provider: this.config.get<string>('ingestion.malwareScannerProvider') ?? 'none',
+        configured: this.config.get<string>('ingestion.malwareScannerProvider') !== 'none',
       },
       billingProvider: {
         provider: this.config.get<string>('billing.provider') || null,

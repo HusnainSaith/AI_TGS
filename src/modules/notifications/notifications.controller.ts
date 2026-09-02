@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -42,7 +43,7 @@ export class NotificationsController {
 @Roles(UserRole.SYSTEM_ADMIN)
 export class AdminNotificationsController {
   constructor(private service: NotificationsService) {}
-  @Post('process') process() {
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) @Post('process') process() {
     return this.service.process();
   }
   @Post('deliveries/:id/retry') retry(
@@ -51,7 +52,7 @@ export class AdminNotificationsController {
   ) {
     return this.service.retry(id, u.id);
   }
-  @Post('smtp/verify') verify() {
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) @Post('smtp/verify') verify() {
     return this.service.verifySmtp();
   }
 }

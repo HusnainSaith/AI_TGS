@@ -4,11 +4,12 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { hash, verify } from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { UserStatus } from '../../common/enums/user-status.enum';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { User } from '../users/user.entity';
 import { AuthToken, AuthTokenType } from './auth-token.entity';
 import { LoginDto, RegisterDto } from './auth.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -21,6 +22,8 @@ type SafeUser = {
   schoolId: string | null;
   emailVerified: boolean;
 };
+const DUMMY_PASSWORD_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$92sKQndROh3TZ+4RVLzf+w$a42+0bOI0jPNe/hHhap3fr4LK7mg4dFmbuahzmVBNhI';
 @Injectable()
 export class AuthService {
   constructor(
@@ -90,8 +93,8 @@ export class AuthService {
   }
   async login(dto: LoginDto) {
     const user = await this.users.findByEmailWithPassword(dto.email);
-    if (!user || !(await verify(user.passwordHash, dto.password)))
-      throw new UnauthorizedException('Invalid credentials');
+    const passwordValid = await verify(user?.passwordHash ?? DUMMY_PASSWORD_HASH, dto.password);
+    if (!user || !passwordValid) throw new UnauthorizedException('Invalid credentials');
     if (user.status !== UserStatus.ACTIVE) throw new UnauthorizedException('Account is not active');
     const result = await this.issueSession(user.id, user.email, user.role, user.schoolId);
     await this.audit.record({
@@ -102,22 +105,28 @@ export class AuthService {
     });
     return { ...result, user: this.safe(user) };
   }
-  async issueSession(id: string, email: string, role: UserRole, schoolId: string | null) {
-    const familyId = randomUUID();
+  async issueSession(
+    id: string,
+    email: string,
+    role: UserRole,
+    schoolId: string | null,
+    familyId: string = randomUUID(),
+    manager: EntityManager = this.tokens.manager,
+  ) {
     const payload = { sub: id, email, role, schoolId };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       expiresIn: this.config.getOrThrow('JWT_ACCESS_EXPIRES_IN'),
     });
     const refreshToken = await this.jwt.signAsync(
-      { ...payload, familyId },
+      { ...payload, familyId, jti: randomUUID() },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.config.getOrThrow('JWT_REFRESH_EXPIRES_IN'),
       },
     );
     const decoded = this.jwt.decode<{ exp: number }>(refreshToken);
-    await this.tokens.save({
+    await manager.getRepository(AuthToken).save({
       userId: id,
       tokenHash: this.digest(refreshToken),
       type: AuthTokenType.REFRESH,
@@ -143,18 +152,38 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const record = await this.tokens.findOneBy({
-      tokenHash: this.digest(raw),
-      type: AuthTokenType.REFRESH,
+    const rotated = await this.tokens.manager.transaction(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [claims.familyId]);
+      const tokenHash = this.digest(raw);
+      const result = await manager.query(
+        `UPDATE auth_tokens SET consumed_at=now(),updated_at=now()
+         WHERE token_hash=$1 AND type='REFRESH' AND family_id=$2 AND consumed_at IS NULL
+           AND revoked_at IS NULL AND expires_at>now()
+         RETURNING family_id AS "familyId"`,
+        [tokenHash, claims.familyId],
+      );
+      const consumed: Array<{ familyId: string }> = Array.isArray(result[0]) ? result[0] : result;
+      if (!consumed[0]) {
+        const record = await manager
+          .getRepository(AuthToken)
+          .findOneBy({ tokenHash, type: AuthTokenType.REFRESH });
+        if (record?.familyId)
+          await manager
+            .getRepository(AuthToken)
+            .update({ familyId: record.familyId }, { revokedAt: new Date() });
+        return null;
+      }
+      return this.issueSession(
+        claims.sub,
+        claims.email,
+        claims.role,
+        claims.schoolId,
+        consumed[0].familyId,
+        manager,
+      );
     });
-    if (!record || record.revokedAt || record.consumedAt || record.expiresAt <= new Date()) {
-      if (record?.familyId)
-        await this.tokens.update({ familyId: record.familyId }, { revokedAt: new Date() });
-      throw new UnauthorizedException('Refresh token is invalid or reused');
-    }
-    record.consumedAt = new Date();
-    await this.tokens.save(record);
-    return this.issueSession(claims.sub, claims.email, claims.role, claims.schoolId);
+    if (!rotated) throw new UnauthorizedException('Refresh token is invalid or reused');
+    return rotated;
   }
   async logout(raw: string) {
     await this.tokens.update(
@@ -182,12 +211,28 @@ export class AuthService {
     return raw;
   }
   async verifyEmail(raw: string) {
-    const token = await this.consumeOpaque(raw, AuthTokenType.EMAIL_VERIFICATION);
-    await this.tokens.manager.update('users', { id: token.userId }, { email_verified: true });
+    await this.tokens.manager.transaction(async (manager) => {
+      const token = await this.consumeOpaque(raw, AuthTokenType.EMAIL_VERIFICATION, manager);
+      await manager.update(User, { id: token.userId }, { emailVerified: true });
+      await manager.update(
+        AuthToken,
+        {
+          userId: token.userId,
+          type: AuthTokenType.EMAIL_VERIFICATION,
+          consumedAt: IsNull(),
+          revokedAt: IsNull(),
+        },
+        { revokedAt: new Date() },
+      );
+    });
   }
   async forgotPassword(email: string) {
+    const startedAt = Date.now();
     const user = await this.users.findByEmailWithPassword(email);
-    if (!user) return {};
+    if (!user) {
+      await this.minimumAnonymousResponseTime(startedAt);
+      return {};
+    }
     const resetToken = await this.issueOpaque(
       user.id,
       AuthTokenType.PASSWORD_RESET,
@@ -204,16 +249,31 @@ export class AuthService {
         actionUrl: `${this.config.get<string>('app.frontendUrl')}/reset-password?token=${encodeURIComponent(resetToken)}`,
       },
     });
+    await this.minimumAnonymousResponseTime(startedAt);
     return { resetToken: this.config.get('app.env') === 'development' ? resetToken : undefined };
   }
   async resetPassword(raw: string, password: string) {
-    const token = await this.consumeOpaque(raw, AuthTokenType.PASSWORD_RESET);
-    await this.tokens.manager.update(
-      'users',
-      { id: token.userId },
-      { password_hash: await hash(password) },
-    );
-    await this.logoutAll(token.userId);
+    const passwordHash = await hash(password);
+    const token = await this.tokens.manager.transaction(async (manager) => {
+      const consumed = await this.consumeOpaque(raw, AuthTokenType.PASSWORD_RESET, manager);
+      await manager.update(User, { id: consumed.userId }, { passwordHash });
+      await manager.update(
+        AuthToken,
+        { userId: consumed.userId, type: AuthTokenType.REFRESH, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      await manager.update(
+        AuthToken,
+        {
+          userId: consumed.userId,
+          type: AuthTokenType.PASSWORD_RESET,
+          consumedAt: IsNull(),
+          revokedAt: IsNull(),
+        },
+        { revokedAt: new Date() },
+      );
+      return consumed;
+    });
     await this.notifications?.create({
       userId: token.userId,
       type: NotificationType.PASSWORD_CHANGED,
@@ -223,11 +283,22 @@ export class AuthService {
       deduplicationKey: `auth:password-changed:${token.id}`,
     });
   }
-  private async consumeOpaque(raw: string, type: AuthTokenType) {
-    const token = await this.tokens.findOneBy({ tokenHash: this.digest(raw), type });
-    if (!token || token.consumedAt || token.revokedAt || token.expiresAt <= new Date())
-      throw new UnauthorizedException('Token is invalid or expired');
-    token.consumedAt = new Date();
-    return this.tokens.save(token);
+  private async consumeOpaque(raw: string, type: AuthTokenType, manager = this.tokens.manager) {
+    const result = await manager.query(
+      `UPDATE auth_tokens SET consumed_at=now(),updated_at=now()
+       WHERE token_hash=$1 AND type=$2 AND consumed_at IS NULL
+         AND revoked_at IS NULL AND expires_at>now()
+       RETURNING id,user_id AS "userId"`,
+      [this.digest(raw), type],
+    );
+    const rows: Array<{ id: string; userId: string }> = Array.isArray(result[0])
+      ? result[0]
+      : result;
+    if (!rows[0]) throw new UnauthorizedException('Token is invalid or expired');
+    return rows[0];
+  }
+  private async minimumAnonymousResponseTime(startedAt: number) {
+    const remaining = 200 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
 }

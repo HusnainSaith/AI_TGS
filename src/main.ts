@@ -8,6 +8,7 @@ import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
   const config = app.get(ConfigService);
   if (config.get('app.trustProxy')) app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.use(helmet());

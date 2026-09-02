@@ -15,6 +15,8 @@ export class PdfExtractorService implements SourceExtractor {
       const document = await pdfjs.getDocument({
         data: new Uint8Array(content),
       }).promise;
+      if (document.numPages > (this.config.get<number>('ingestion.maxPdfPages') ?? 1000))
+        throw new Error('PARSER_RESOURCE_LIMIT_EXCEEDED');
       const blocks: ExtractionResult['blocks'] = [];
       let emptyPageCount = 0;
       for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
@@ -44,6 +46,7 @@ export class PdfExtractorService implements SourceExtractor {
         warnings: [],
       };
     } catch (error) {
+      if (error instanceof Error && error.message === 'PARSER_RESOURCE_LIMIT_EXCEEDED') throw error;
       throw new Error('PDF_EXTRACTION_FAILED', { cause: error });
     }
   }

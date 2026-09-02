@@ -216,10 +216,6 @@ export class TestExportsService {
       });
       return this.safe(completed);
     } catch (error) {
-      this.logger.error(
-        'Test PDF export processing failed',
-        error instanceof Error ? error.stack : undefined,
-      );
       if (stored) await this.storage.deleteObject(storageKey).catch(() => undefined);
       const current = await this.exports.findOneBy({ id: exportId });
       if (current?.usageReservationId)
@@ -234,6 +230,7 @@ export class TestExportsService {
             : phase === 'settlement'
               ? TestExportErrorCode.PDF_EXPORT_PROVIDER_ERROR
               : TestExportErrorCode.PDF_RENDER_FAILED;
+      this.logger.warn(`Test PDF export failed exportId=${exportId} code=${code}`);
       await this.exports.update(
         { id: exportId, processingToken: token },
         {

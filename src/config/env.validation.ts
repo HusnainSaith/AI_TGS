@@ -20,6 +20,9 @@ export const envSchema = Joi.object({
     .when('APP_ENV', { is: 'production', then: Joi.required() })
     .default('tgs_dev_only'),
   DATABASE_SSL: Joi.boolean().truthy('true').falsy('false').default(false),
+  DATABASE_POOL_MAX: Joi.number().integer().min(1).max(100).default(10),
+  DATABASE_IDLE_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(30000),
+  DATABASE_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().allow('').default(''),
@@ -38,6 +41,9 @@ export const envSchema = Joi.object({
   KB_PDF_MIN_TEXT_CHARS_PER_PAGE: Joi.number().integer().min(0).max(10000).default(30),
   KB_PDF_MAX_EMPTY_PAGE_RATIO: Joi.number().min(0).max(1).default(0.6),
   KB_INGESTION_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
+  KB_MAX_EXTRACTED_CHARACTERS: Joi.number().integer().min(1000).max(50000000).default(5000000),
+  KB_MAX_PDF_PAGES: Joi.number().integer().min(1).max(10000).default(1000),
+  KB_MAX_CHUNKS: Joi.number().integer().min(1).max(100000).default(10000),
   KB_ALLOW_UNSCANNED_PROCESSING: Joi.boolean().truthy('true').falsy('false').default(false),
   OCR_PROVIDER: Joi.string().valid('none').default('none'),
   MALWARE_SCANNER_PROVIDER: Joi.string().valid('none', 'windows_defender').default('none'),
@@ -100,6 +106,10 @@ export const envSchema = Joi.object({
   SMTP_GREETING_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
   SMTP_SOCKET_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(30000),
   NOTIFICATION_WORKER_INTERVAL_MS: Joi.number().integer().min(1000).max(300000).default(5000),
+  EMAIL_TOKEN_ENCRYPTION_KEY: Joi.string()
+    .allow('')
+    .pattern(/^[A-Za-z0-9+/]{43}=$/)
+    .default(''),
   PAYMENT_PROVIDER: Joi.string().valid('', 'test', 'safepay').default(''),
   PAYMENT_WEBHOOK_SECRET: Joi.string().allow('').default(''),
   BILLING_SUCCESS_URL: Joi.string()
@@ -137,6 +147,29 @@ export const envSchema = Joi.object({
     return helpers.error('any.invalid', {
       message: 'The deterministic test AI provider is forbidden in production',
     });
+  const corsOrigins = (typeof value.CORS_ORIGINS === 'string' ? value.CORS_ORIGINS : '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (corsOrigins.includes('*'))
+    return helpers.error('any.invalid', {
+      message: 'Wildcard CORS origins are forbidden when credentials are enabled',
+    });
+  if (
+    value.APP_ENV === 'production' &&
+    (!corsOrigins.length ||
+      corsOrigins.some((origin) => !origin.startsWith('https://') || origin.includes('localhost')))
+  )
+    return helpers.error('any.invalid', {
+      message: 'Production CORS origins must be explicit HTTPS origins',
+    });
+  if (
+    value.APP_ENV === 'production' &&
+    (typeof value.FRONTEND_URL !== 'string' || !value.FRONTEND_URL.startsWith('https://'))
+  )
+    return helpers.error('any.invalid', {
+      message: 'Production FRONTEND_URL must use HTTPS',
+    });
   if (value.APP_ENV === 'production' && value.PAYMENT_PROVIDER === 'test')
     return helpers.error('any.invalid', {
       message: 'The deterministic test payment provider is forbidden in production',
@@ -151,6 +184,18 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.EMAIL_PROVIDER !== 'smtp')
     return helpers.error('any.invalid', {
       message: 'Production requires EMAIL_PROVIDER=smtp for critical account emails',
+    });
+  if (
+    typeof value.EMAIL_TOKEN_ENCRYPTION_KEY === 'string' &&
+    value.EMAIL_TOKEN_ENCRYPTION_KEY &&
+    Buffer.from(value.EMAIL_TOKEN_ENCRYPTION_KEY, 'base64').length !== 32
+  )
+    return helpers.error('any.invalid', {
+      message: 'EMAIL_TOKEN_ENCRYPTION_KEY must be base64 encoding of exactly 32 bytes',
+    });
+  if (value.APP_ENV === 'production' && !value.EMAIL_TOKEN_ENCRYPTION_KEY)
+    return helpers.error('any.invalid', {
+      message: 'Production requires a dedicated EMAIL_TOKEN_ENCRYPTION_KEY',
     });
   if (Number(value.SMTP_PORT) === 465 && value.SMTP_SECURE !== true)
     return helpers.error('any.invalid', { message: 'SMTP port 465 requires SMTP_SECURE=true' });

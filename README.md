@@ -188,4 +188,8 @@ For local webhook delivery Safepay requires a publicly reachable endpoint (HTTPS
 
 Configure `EMAIL_PROVIDER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional `SMTP_USER`/`SMTP_PASSWORD`, and `SMTP_FROM_EMAIL`. `FRONTEND_URL` is used for verification and reset links. Production refuses to start without a complete SMTP configuration.
 
+Production also requires `EMAIL_TOKEN_ENCRYPTION_KEY`, containing the standard base64 encoding of exactly 32 cryptographically random bytes. Keep it stable while queued security emails exist; rotating it invalidates encrypted delivery-only link data. It is separate from JWT secrets and must never be committed.
+
 The application runs a PostgreSQL-backed delivery worker every `NOTIFICATION_WORKER_INTERVAL_MS` (default 5 seconds). It is safe across multiple instances and retries transient failures at most three times. Check connection/authentication without sending a message with `npm run smtp:verify`. Apply all pending core migrations before deployment.
+
+Database connections are bounded with `DATABASE_POOL_MAX`, `DATABASE_IDLE_TIMEOUT_MS`, and `DATABASE_CONNECTION_TIMEOUT_MS`. Parser expansion is bounded with `KB_MAX_EXTRACTED_CHARACTERS`, `KB_MAX_PDF_PAGES`, and `KB_MAX_CHUNKS`. Production should additionally enforce container/OS resource limits and PostgreSQL backups with regularly tested restore procedures.

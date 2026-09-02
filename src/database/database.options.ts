@@ -13,5 +13,10 @@ export function databaseOptions(config: ConfigService): TypeOrmModuleOptions {
     synchronize: false,
     migrationsRun: false,
     logging: config.get('app.env') === 'development',
+    extra: {
+      max: config.get<number>('database.poolMax') ?? 10,
+      idleTimeoutMillis: config.get<number>('database.idleTimeoutMs') ?? 30000,
+      connectionTimeoutMillis: config.get<number>('database.connectionTimeoutMs') ?? 10000,
+    },
   };
 }

@@ -37,10 +37,19 @@ export class UsersService {
     if (!current || !(await verify(current.passwordHash, currentPassword))) {
       throw new UnauthorizedException('Current password is incorrect');
     }
-    await this.users.update(id, { passwordHash: await hash(newPassword) });
-    await this.tokens.update(
-      { userId: id, type: AuthTokenType.REFRESH, revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+    const passwordHash = await hash(newPassword);
+    await this.users.manager.transaction(async (manager) => {
+      await manager.update(User, id, { passwordHash });
+      await manager.update(
+        AuthToken,
+        { userId: id, type: AuthTokenType.REFRESH, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      await manager.update(
+        AuthToken,
+        { userId: id, type: AuthTokenType.PASSWORD_RESET, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+    });
   }
 }

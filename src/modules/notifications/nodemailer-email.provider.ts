@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { Transporter } from 'nodemailer';
+import { isEmail } from 'class-validator';
 import { EmailMessage, EmailProvider } from '../../infrastructure/providers/provider.contracts';
 
 export class EmailProviderError extends Error {
@@ -15,7 +16,7 @@ export class EmailProviderError extends Error {
   }
 }
 @Injectable()
-export class NodemailerEmailProvider implements EmailProvider {
+export class NodemailerEmailProvider implements EmailProvider, OnApplicationShutdown {
   readonly name = 'smtp';
   readonly configured: boolean;
   private readonly transport: Transporter | null;
@@ -46,6 +47,13 @@ export class NodemailerEmailProvider implements EmailProvider {
       : null;
   }
   async send(message: EmailMessage) {
+    if (
+      !isEmail(message.to) ||
+      /[\r\n]/.test(message.to) ||
+      /[\r\n]/.test(message.subject) ||
+      (message.replyTo && (!isEmail(message.replyTo) || /[\r\n]/.test(message.replyTo)))
+    )
+      throw new EmailProviderError('EMAIL_INVALID_RECIPIENT');
     if (!this.transport) throw new EmailProviderError('EMAIL_NOT_CONFIGURED');
     try {
       await this.transport.sendMail({
@@ -73,5 +81,8 @@ export class NodemailerEmailProvider implements EmailProvider {
   async verify() {
     if (!this.transport) return false;
     return this.transport.verify();
+  }
+  onApplicationShutdown() {
+    this.transport?.close();
   }
 }

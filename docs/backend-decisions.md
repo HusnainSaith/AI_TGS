@@ -136,3 +136,12 @@ Migration execution is dependency-ordered rather than simply core-first: core mi
 - Nodemailer uses one pooled, TLS-validating transport and centralized escaped HTML/plain-text templates. Startup validation requires SMTP in production because verification, reset, and password-change messages are mandatory.
 - Verification and reset tokens remain SHA-256 digests in `auth_tokens`. Action URLs are stored only in AES-256-GCM encrypted delivery data; notification API metadata and logs never expose raw tokens.
 - Product email preferences may disable optional messages but cannot suppress account-security email. Health reports configuration only and never contacts the SMTP server; `npm run smtp:verify` performs an explicit connection/authentication check without sending mail.
+
+## Security and production hardening audit (2026-09-02)
+
+- Opaque verification/reset tokens are atomically consumed in PostgreSQL. Password reset revokes every other outstanding reset token and all refresh sessions; refresh rotation is serialized per token family so concurrent replay revokes the newly rotated descendant as well.
+- Email-only data uses a unique 96-bit random GCM IV, a 256-bit key, and authenticated additional data binding ciphertext to notification purpose and user. Production requires a dedicated base64 `EMAIL_TOKEN_ENCRYPTION_KEY`; development derives a domain-separated key from the access-token secret for compatibility.
+- Authentication and expensive generation/export/SMTP operations have narrower in-process rate limits in addition to the global limit. This remains instance-local; a distributed rate limiter is an explicit scaling consideration, not a current Redis dependency.
+- Upload byte limits are supplemented by extracted-character, PDF-page, and chunk limits. Processing leases are renewed at ingestion phase boundaries. DOCX parsing remains in-process, so OS/container memory and CPU limits are still required as defense in depth against decompression/parser abuse.
+- Production startup rejects wildcard/non-HTTPS CORS origins, non-HTTPS frontend links, missing SMTP, missing email encryption key, deterministic providers, and unsafe malware bypass. PostgreSQL pool size and connection/idle timeouts are bounded and configurable.
+- SIGTERM/SIGINT hooks stop polling, wait up to five seconds for an active notification cycle, close the SMTP pool, and let Nest close database resources. Processing leases provide crash recovery where exact external side-effect atomicity is impossible.

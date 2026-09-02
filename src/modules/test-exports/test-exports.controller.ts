@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -16,6 +17,7 @@ import { TestExportsService } from './test-exports.service';
 export class TestExportsController {
   constructor(private exports: TestExportsService) {}
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
     summary:
       'Create or reuse a FINALIZED Test PDF artifact; successful new artifacts consume one PDF_EXPORTS unit',

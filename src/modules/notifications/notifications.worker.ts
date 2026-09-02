@@ -7,6 +7,7 @@ export class NotificationsWorker implements OnApplicationBootstrap, OnApplicatio
   private readonly logger = new Logger(NotificationsWorker.name);
   private timer?: NodeJS.Timeout;
   private running = false;
+  private active?: Promise<void>;
 
   constructor(
     private readonly notifications: NotificationsService,
@@ -20,19 +21,23 @@ export class NotificationsWorker implements OnApplicationBootstrap, OnApplicatio
     void this.tick();
   }
 
-  onApplicationShutdown() {
+  async onApplicationShutdown() {
     if (this.timer) clearInterval(this.timer);
+    if (this.active)
+      await Promise.race([this.active, new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
   }
 
   private async tick() {
     if (this.running) return;
     this.running = true;
-    try {
-      await this.notifications.process();
-    } catch (error) {
-      this.logger.error('Notification delivery cycle failed', error);
-    } finally {
-      this.running = false;
-    }
+    this.active = this.notifications
+      .process()
+      .then(() => undefined)
+      .catch(() => this.logger.error('Notification delivery cycle failed'))
+      .finally(() => {
+        this.running = false;
+        this.active = undefined;
+      });
+    await this.active;
   }
 }

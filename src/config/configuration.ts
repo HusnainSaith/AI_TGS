@@ -18,6 +18,9 @@ export const configuration = () => ({
     user: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,
     ssl: process.env.DATABASE_SSL === 'true',
+    poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    idleTimeoutMs: Number(process.env.DATABASE_IDLE_TIMEOUT_MS ?? 30000),
+    connectionTimeoutMs: Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS ?? 10000),
   },
   redis: {
     host: process.env.REDIS_HOST,
@@ -46,6 +49,9 @@ export const configuration = () => ({
     pdfMinTextCharsPerPage: Number(process.env.KB_PDF_MIN_TEXT_CHARS_PER_PAGE ?? 30),
     pdfMaxEmptyPageRatio: Number(process.env.KB_PDF_MAX_EMPTY_PAGE_RATIO ?? 0.6),
     staleMinutes: Number(process.env.KB_INGESTION_STALE_MINUTES ?? 15),
+    maxExtractedCharacters: Number(process.env.KB_MAX_EXTRACTED_CHARACTERS ?? 5000000),
+    maxPdfPages: Number(process.env.KB_MAX_PDF_PAGES ?? 1000),
+    maxChunks: Number(process.env.KB_MAX_CHUNKS ?? 10000),
     allowUnscannedProcessing:
       process.env.APP_ENV !== 'production' && process.env.KB_ALLOW_UNSCANNED_PROCESSING === 'true',
     ocrProvider: process.env.OCR_PROVIDER ?? 'none',
@@ -107,6 +113,7 @@ export const configuration = () => ({
     fromEmail: process.env.SMTP_FROM_EMAIL || '',
     fromName: process.env.SMTP_FROM_NAME || 'AI Test Generation',
     workerIntervalMs: Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS ?? 5000),
+    tokenEncryptionKey: process.env.EMAIL_TOKEN_ENCRYPTION_KEY || '',
     smtp: {
       host: process.env.SMTP_HOST || '',
       port: Number(process.env.SMTP_PORT ?? 587),

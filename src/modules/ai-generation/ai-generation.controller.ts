@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireVerifiedEmail } from '../../common/decorators/verified-email.decorator';
@@ -23,12 +24,14 @@ import { CreateGenerationDto } from './dto/generation.dto';
 export class AiGenerationController {
   constructor(private readonly generation: AiGenerationService) {}
   @Post('tests/generate')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN, UserRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Create an asynchronous REQUIRED-grounding generation job' })
   create(@Body() dto: CreateGenerationDto, @CurrentUser() user: AuthenticatedUser) {
     return this.generation.create(dto, user);
   }
   @Post('jobs/:jobId/process')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN, UserRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Process a durable job using the same service future workers call' })
   process(@Param('jobId', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
@@ -53,6 +56,7 @@ export class AiGenerationController {
     return this.generation.retrievalEvents(id, user);
   }
   @Post('jobs/:jobId/items/:itemId/regenerate')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN, UserRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Regenerate one item with new retrieval and preserved history' })
   regenerate(
