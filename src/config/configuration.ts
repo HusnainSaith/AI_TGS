@@ -61,7 +61,10 @@ export const configuration = () => ({
   embedding: {
     provider: process.env.EMBEDDING_PROVIDER || 'openai',
     model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
-    apiKey: process.env.OPENAI_API_KEY || process.env.EMBEDDING_API_KEY || '',
+    apiKey:
+      process.env.EMBEDDING_PROVIDER === 'openrouter'
+        ? process.env.OPENROUTER_API_KEY || ''
+        : process.env.OPENAI_API_KEY || process.env.EMBEDDING_API_KEY || '',
     dimension: 1536,
     distanceMetric: 'cosine',
     preprocessingVersion: 'normalized-chunk-v1',
@@ -83,7 +86,10 @@ export const configuration = () => ({
   aiGeneration: {
     provider: process.env.AI_PROVIDER || 'openai',
     model: process.env.AI_MODEL || '',
-    apiKey: process.env.OPENAI_API_KEY || process.env.AI_API_KEY || '',
+    apiKey:
+      process.env.AI_PROVIDER === 'openrouter'
+        ? process.env.OPENROUTER_API_KEY || ''
+        : process.env.OPENAI_API_KEY || process.env.AI_API_KEY || '',
     temperature: Number(process.env.AI_TEMPERATURE ?? 0.2),
     maxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS ?? 4000),
     timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 60000),
@@ -91,6 +97,12 @@ export const configuration = () => ({
     maxQuestionsPerRequest: Number(process.env.AI_MAX_QUESTIONS_PER_REQUEST ?? 100),
     promptStrategyVersion: process.env.AI_PROMPT_STRATEGY_VERSION ?? 'grounded-question-v1',
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
+  },
+  openRouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || '',
+    baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    httpReferer: process.env.OPENROUTER_HTTP_REFERER || '',
+    appName: process.env.OPENROUTER_APP_NAME || 'AI Test Generation System',
   },
   subscription: { reservationTtlMinutes: Number(process.env.USAGE_RESERVATION_TTL_MINUTES ?? 30) },
   billing: {

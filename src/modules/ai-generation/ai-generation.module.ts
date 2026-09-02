@@ -18,7 +18,14 @@ import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
 import { NearDuplicateDetector } from './near-duplicate-detector';
 import { OpenAiGenerationProvider } from './openai-generation.provider';
+import { OpenRouterAiGenerationProvider } from './openrouter-generation.provider';
 import { NotificationsModule } from '../notifications/notifications.module';
+export function createAiGenerationProvider(config: ConfigService) {
+  const provider = config.get<string>('aiGeneration.provider');
+  if (provider === 'test') return new DeterministicTestAiGenerationProvider();
+  if (provider === 'openrouter') return new OpenRouterAiGenerationProvider(config);
+  return new OpenAiGenerationProvider(config);
+}
 @Module({
   imports: [
     TypeOrmModule.forFeature([GenerationJob, GenerationJobItem]),
@@ -40,10 +47,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     {
       provide: AI_GENERATION_PROVIDER,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        config.get<string>('aiGeneration.provider') === 'test'
-          ? new DeterministicTestAiGenerationProvider()
-          : new OpenAiGenerationProvider(config),
+      useFactory: createAiGenerationProvider,
     },
   ],
 })

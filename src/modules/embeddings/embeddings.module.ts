@@ -13,6 +13,16 @@ import { EmbeddingsController } from './embeddings.controller';
 import { ContentChunkEmbedding } from './entities/content-chunk-embedding.entity';
 import { EmbeddingJob } from './entities/embedding-job.entity';
 import { OpenAIEmbeddingProvider } from './openai-embedding.provider';
+import { OpenRouterEmbeddingProvider } from './openrouter-embedding.provider';
+export function createEmbeddingProvider(
+  embeddingConfig: EmbeddingConfigService,
+  config: ConfigService,
+) {
+  const provider = config.get<string>('embedding.provider');
+  if (provider === 'test') return new DeterministicTestEmbeddingProvider(embeddingConfig);
+  if (provider === 'openrouter') return new OpenRouterEmbeddingProvider(embeddingConfig, config);
+  return new OpenAIEmbeddingProvider(embeddingConfig);
+}
 
 @Module({
   imports: [
@@ -25,12 +35,7 @@ import { OpenAIEmbeddingProvider } from './openai-embedding.provider';
     {
       provide: EMBEDDING_PROVIDER,
       inject: [EmbeddingConfigService, ConfigService],
-      useFactory: (embeddingConfig: EmbeddingConfigService, config: ConfigService) => {
-        const provider = config.get<string>('embedding.provider');
-        return provider === 'test'
-          ? new DeterministicTestEmbeddingProvider(embeddingConfig)
-          : new OpenAIEmbeddingProvider(embeddingConfig);
-      },
+      useFactory: createEmbeddingProvider,
     },
     EmbeddingService,
     EmbeddingReindexService,

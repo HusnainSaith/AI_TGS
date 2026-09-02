@@ -35,6 +35,7 @@ export class HealthController {
       embeddingProvider: {
         provider: this.config.get<string>('embedding.provider') ?? null,
         model: this.config.get<string>('embedding.model') ?? null,
+        dimension: this.config.get<number>('embedding.dimension') ?? null,
         configured:
           this.config.get<string>('embedding.provider') === 'test' ||
           Boolean(this.config.get<string>('embedding.apiKey')),

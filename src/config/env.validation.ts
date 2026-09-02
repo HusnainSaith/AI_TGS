@@ -60,7 +60,7 @@ export const envSchema = Joi.object({
   OBJECT_STORAGE_BUCKET: Joi.string().allow('').default(''),
   OBJECT_STORAGE_REGION: Joi.string().allow('').default(''),
   OBJECT_STORAGE_ENDPOINT: Joi.string().allow('').default(''),
-  AI_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
+  AI_PROVIDER: Joi.string().valid('', 'openai', 'openrouter', 'test').default('openai'),
   AI_MODEL: Joi.string().allow('').default(''),
   AI_API_KEY: Joi.string().allow('').default(''),
   AI_TEMPERATURE: Joi.number().min(0).max(2).default(0.2),
@@ -77,10 +77,19 @@ export const envSchema = Joi.object({
   TEST_EXPORT_STORAGE_PREFIX: Joi.string()
     .pattern(/^[a-z0-9/_-]+$/)
     .default('test-exports'),
-  EMBEDDING_PROVIDER: Joi.string().valid('', 'openai', 'test').default('openai'),
+  EMBEDDING_PROVIDER: Joi.string().valid('', 'openai', 'openrouter', 'test').default('openai'),
   EMBEDDING_MODEL: Joi.string().allow('').default('text-embedding-3-small'),
   EMBEDDING_API_KEY: Joi.string().allow('').default(''),
   OPENAI_API_KEY: Joi.string().allow('').default(''),
+  OPENROUTER_API_KEY: Joi.string().allow('').default(''),
+  OPENROUTER_BASE_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .default('https://openrouter.ai/api/v1'),
+  OPENROUTER_HTTP_REFERER: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
+  OPENROUTER_APP_NAME: Joi.string().min(1).max(120).default('AI Test Generation System'),
   EMBEDDING_BATCH_SIZE: Joi.number().integer().min(1).max(2048).default(32),
   EMBEDDING_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(30000),
   EMBEDDING_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
@@ -147,6 +156,30 @@ export const envSchema = Joi.object({
     return helpers.error('any.invalid', {
       message: 'The deterministic test AI provider is forbidden in production',
     });
+  if (
+    value.APP_ENV === 'production' &&
+    (!['openai', 'openrouter'].includes(String(value.AI_PROVIDER)) ||
+      !value.AI_MODEL ||
+      (value.AI_PROVIDER === 'openai' && !value.OPENAI_API_KEY))
+  )
+    return helpers.error('any.invalid', {
+      message: 'Production requires a configured real AI generation provider and model',
+    });
+  if (
+    value.APP_ENV === 'production' &&
+    (!['openai', 'openrouter'].includes(String(value.EMBEDDING_PROVIDER)) ||
+      (value.EMBEDDING_PROVIDER === 'openai' && !value.OPENAI_API_KEY && !value.EMBEDDING_API_KEY))
+  )
+    return helpers.error('any.invalid', {
+      message: 'Production requires a configured real embedding provider',
+    });
+  if (
+    (value.AI_PROVIDER === 'openrouter' || value.EMBEDDING_PROVIDER === 'openrouter') &&
+    !value.OPENROUTER_API_KEY
+  )
+    return helpers.error('any.invalid', {
+      message: 'OpenRouter providers require OPENROUTER_API_KEY',
+    });
   const corsOrigins = (typeof value.CORS_ORIGINS === 'string' ? value.CORS_ORIGINS : '')
     .split(',')
     .map((origin) => origin.trim())
@@ -210,6 +243,13 @@ export const envSchema = Joi.object({
   if (value.EMBEDDING_PROVIDER === 'openai' && value.EMBEDDING_MODEL !== 'text-embedding-3-small')
     return helpers.error('any.invalid', {
       message: 'The active MVP OpenAI embedding model must be text-embedding-3-small',
+    });
+  if (
+    value.EMBEDDING_PROVIDER === 'openrouter' &&
+    value.EMBEDDING_MODEL !== 'openai/text-embedding-3-small'
+  )
+    return helpers.error('any.invalid', {
+      message: 'The active OpenRouter embedding model must be openai/text-embedding-3-small',
     });
   if (Number(value.RAG_VECTOR_WEIGHT) + Number(value.RAG_KEYWORD_WEIGHT) <= 0)
     return helpers.error('any.invalid', { message: 'Retrieval weights cannot both be zero' });
