@@ -116,12 +116,14 @@ export class AuthService {
     const payload = { sub: id, email, role, schoolId };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      algorithm: 'HS256',
       expiresIn: this.config.getOrThrow('JWT_ACCESS_EXPIRES_IN'),
     });
     const refreshToken = await this.jwt.signAsync(
       { ...payload, familyId, jti: randomUUID() },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        algorithm: 'HS256',
         expiresIn: this.config.getOrThrow('JWT_REFRESH_EXPIRES_IN'),
       },
     );
@@ -148,6 +150,7 @@ export class AuthService {
     try {
       claims = await this.jwt.verifyAsync(raw, {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+        algorithms: ['HS256'],
       });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
