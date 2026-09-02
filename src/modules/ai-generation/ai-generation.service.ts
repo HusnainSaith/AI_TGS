@@ -38,6 +38,8 @@ import { GenerationEntitlementService } from '../subscriptions/generation-entitl
 import { GenerationOutputValidator } from './generation-output-validator.service';
 import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 
 @Injectable()
 export class AiGenerationService {
@@ -56,6 +58,7 @@ export class AiGenerationService {
     private readonly entitlements: GenerationEntitlementService,
     private readonly audit: AuditService,
     @Inject(AI_GENERATION_PROVIDER) private readonly provider: AiGenerationProvider,
+    private readonly notifications?: NotificationsService,
   ) {}
 
   async create(dto: CreateGenerationDto, user: AuthenticatedUser) {
@@ -408,6 +411,24 @@ export class AiGenerationService {
       outcome: status === GenerationJobStatus.FAILED ? 'FAILED' : 'SUCCEEDED',
     });
     await this.entitlements.settle(jobId, user.id);
+    if (status !== GenerationJobStatus.PARTIAL)
+      await this.notifications?.create({
+        userId: user.id,
+        type:
+          status === GenerationJobStatus.FAILED
+            ? NotificationType.AI_GENERATION_FAILED
+            : NotificationType.AI_GENERATION_COMPLETED,
+        title:
+          status === GenerationJobStatus.FAILED
+            ? 'Question generation failed'
+            : 'Question generation completed',
+        message:
+          status === GenerationJobStatus.FAILED
+            ? 'Your AI generation job could not be completed.'
+            : `${generated} questions were generated.`,
+        deduplicationKey: `generation:${jobId}:${status}:${user.id}`,
+        metadata: { jobId, generatedCount: generated },
+      });
     return this.get(jobId, user);
   }
   async get(id: string, user: AuthenticatedUser) {

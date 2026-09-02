@@ -32,6 +32,8 @@ import { ExamTest } from './entities/test.entity';
 import { TestQuestion } from './entities/test-question.entity';
 import { TestSnapshotService } from './test-snapshot.service';
 import { TestStatus } from './test.enums';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 @Injectable()
 export class TestsService {
   constructor(
@@ -42,6 +44,7 @@ export class TestsService {
     private entitlement: EntitlementService,
     private usage: UsageService,
     private audit: AuditService,
+    private notifications?: NotificationsService,
   ) {}
   async create(dto: CreateTestDto, user: AuthenticatedUser) {
     await this.validateScope(dto.classId, dto.sectionId ?? null, dto.subjectId);
@@ -265,7 +268,7 @@ export class TestsService {
     });
   }
   async finalize(id: string, user: AuthenticatedUser) {
-    return this.data.transaction(async (m) => {
+    const result = await this.data.transaction(async (m) => {
       const t = await this.lock(id, user, m);
       if (t.status === TestStatus.FINALIZED) return this.read(id, m);
       this.draft(t);
@@ -298,6 +301,15 @@ export class TestsService {
       );
       return this.read(id, m);
     });
+    await this.notifications?.create({
+      userId: user.id,
+      type: NotificationType.TEST_FINALIZED,
+      title: 'Test finalized',
+      message: 'Your test was finalized and its question snapshot is now immutable.',
+      deduplicationKey: `test:${id}:finalized:${user.id}`,
+      metadata: { testId: id },
+    });
+    return result;
   }
   async clone(id: string, user: AuthenticatedUser) {
     return this.data.transaction(async (m) => {

@@ -46,6 +46,15 @@ export class HealthController {
             this.config.get<string>('aiGeneration.apiKey'),
           ),
       },
+      emailProvider: {
+        provider: this.config.get<string>('email.provider') || null,
+        configured:
+          this.config.get<string>('email.provider') === 'smtp' &&
+          Boolean(
+            this.config.get<string>('email.smtp.host') &&
+            this.config.get<string>('email.fromEmail'),
+          ),
+      },
       billingProvider: {
         provider: this.config.get<string>('billing.provider') || null,
         configured:

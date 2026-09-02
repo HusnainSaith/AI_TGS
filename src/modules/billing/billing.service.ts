@@ -15,6 +15,8 @@ import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.in
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuditService } from '../audit/audit.service';
 import { BillingProviderError } from './billing-provider.error';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 import {
   BillingSubscription,
   BillingWebhookEvent,
@@ -45,6 +47,7 @@ export class BillingService {
     private config: ConfigService,
     @Inject(PAYMENT_PROVIDER) private provider: PaymentProvider,
     private audit: AuditService,
+    private notifications?: NotificationsService,
   ) {}
   private activeProvider() {
     const configured = this.config.get<string>('billing.provider');
@@ -169,6 +172,7 @@ export class BillingService {
       return { accepted: true, duplicate: true };
     }
     await this.process(event.id, normalized);
+    await this.notifyBilling(event.id, normalized.type);
     await this.audit.record({
       action: 'billing.webhook.processed',
       entityType: 'billing_event',
@@ -192,6 +196,31 @@ export class BillingService {
       metadata: { provider: this.provider.name },
     });
     return { accepted: true, activationRule: 'local state changes only after verified webhook' };
+  }
+  private async notifyBilling(eventId: string, type: BillingWebhookEvent['type']) {
+    const map: Partial<Record<BillingWebhookEvent['type'], NotificationType>> = {
+      SUBSCRIPTION_ACTIVATED: NotificationType.SUBSCRIPTION_ACTIVATED,
+      SUBSCRIPTION_RENEWED: NotificationType.SUBSCRIPTION_PAYMENT_SUCCEEDED,
+      PAYMENT_SUCCEEDED: NotificationType.SUBSCRIPTION_PAYMENT_SUCCEEDED,
+      PAYMENT_FAILED: NotificationType.SUBSCRIPTION_PAYMENT_FAILED,
+      SUBSCRIPTION_CANCELED: NotificationType.SUBSCRIPTION_CANCELLED,
+      SUBSCRIPTION_EXPIRED: NotificationType.SUBSCRIPTION_EXPIRED,
+    };
+    const notificationType = map[type];
+    if (!notificationType) return;
+    const rows: Array<{ userId: string | null }> = await this.data.query(
+      `SELECT COALESCE(s.user_id,(SELECT u.id FROM users u WHERE u.school_id=s.school_id AND u.role='SCHOOL_ADMIN' ORDER BY u.created_at LIMIT 1)) "userId" FROM billing_events e JOIN subscriptions s ON s.id=e.related_subscription_id WHERE e.id=$1`,
+      [eventId],
+    );
+    if (!rows[0]?.userId) return;
+    await this.notifications?.create({
+      userId: rows[0].userId,
+      type: notificationType,
+      title: notificationType.replaceAll('_', ' ').toLowerCase(),
+      message: 'Your subscription billing status was updated from a verified provider event.',
+      deduplicationKey: `billing:${eventId}:${notificationType}:${rows[0].userId}`,
+      metadata: { billingEventId: eventId },
+    });
   }
   private async process(eventId: string, e: BillingWebhookEvent) {
     await this.data.transaction(async (manager) => {

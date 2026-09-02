@@ -33,6 +33,8 @@ import {
 } from './test-export.enums';
 import { PDF_RENDERER, PdfRenderer } from './test-render-model';
 import { TestRenderModelService } from './test-render-model.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 
 @Injectable()
 export class TestExportsService {
@@ -48,6 +50,7 @@ export class TestExportsService {
     private entitlement: EntitlementService,
     private usage: UsageService,
     private audit: AuditService,
+    private notifications?: NotificationsService,
   ) {}
 
   async create(
@@ -203,6 +206,14 @@ export class TestExportsService {
         );
         return current;
       });
+      await this.notifications?.create({
+        userId: user.id,
+        type: NotificationType.PDF_EXPORT_COMPLETED,
+        title: 'PDF export completed',
+        message: 'Your secure PDF export is ready to download.',
+        deduplicationKey: `pdf:${exportId}:completed:${user.id}`,
+        metadata: { exportId, testId: completed.testId, type: completed.type },
+      });
       return this.safe(completed);
     } catch (error) {
       this.logger.error(
@@ -241,6 +252,16 @@ export class TestExportsService {
         metadata: { errorCode: code },
         outcome: 'FAILED',
       });
+      await this.notifications
+        ?.create({
+          userId: user.id,
+          type: NotificationType.PDF_EXPORT_FAILED,
+          title: 'PDF export failed',
+          message: 'Your PDF export could not be completed. You can retry from the application.',
+          deduplicationKey: `pdf:${exportId}:failed:${user.id}`,
+          metadata: { exportId },
+        })
+        ?.catch(() => undefined);
       throw new BadRequestException(code);
     }
   }

@@ -42,6 +42,11 @@ import {
   BillingTransaction,
   PlanProviderPrice,
 } from '../modules/billing/billing.entities';
+import {
+  Notification,
+  NotificationDelivery,
+  NotificationPreference,
+} from '../modules/notifications/notification.entities';
 loadEnv();
 export default new DataSource({
   type: 'postgres',
@@ -90,6 +95,9 @@ export default new DataSource({
     BillingCheckoutSession,
     BillingEvent,
     BillingTransaction,
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
   ],
   migrations: ['src/database/migrations/*.ts'],
 });

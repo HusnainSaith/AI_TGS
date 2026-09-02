@@ -18,6 +18,7 @@ import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
 import { NearDuplicateDetector } from './near-duplicate-detector';
 import { OpenAiGenerationProvider } from './openai-generation.provider';
+import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([GenerationJob, GenerationJobItem]),
@@ -26,6 +27,7 @@ import { OpenAiGenerationProvider } from './openai-generation.provider';
     EmbeddingsModule,
     QuestionsModule,
     RetrievalModule,
+    NotificationsModule,
   ],
   controllers: [AiGenerationController],
   providers: [

@@ -9,6 +9,9 @@ export const envSchema = Joi.object({
   CORS_ORIGINS: Joi.string().default('http://localhost:3000'),
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   TRUST_PROXY: Joi.boolean().truthy('true').falsy('false').default(false),
+  FRONTEND_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:3000'),
   DATABASE_HOST: Joi.string().default('localhost'),
   DATABASE_PORT: Joi.number().port().default(5432),
   DATABASE_NAME: Joi.string().default('tgs'),
@@ -84,8 +87,19 @@ export const envSchema = Joi.object({
   RAG_KEYWORD_CANDIDATE_K: Joi.number().integer().min(1).max(500).default(40),
   RAG_CONTEXT_BUDGET_TOKENS: Joi.number().integer().min(100).max(50000).default(6000),
   RAG_RETRIEVAL_STRATEGY_VERSION: Joi.string().min(1).max(64).default('hybrid-v1'),
-  EMAIL_PROVIDER: Joi.string().allow('').default(''),
+  EMAIL_PROVIDER: Joi.string().valid('', 'smtp').default(''),
   EMAIL_FROM: Joi.string().allow('').default(''),
+  SMTP_HOST: Joi.string().allow('').default(''),
+  SMTP_PORT: Joi.number().port().default(587),
+  SMTP_SECURE: Joi.boolean().truthy('true').falsy('false').default(false),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASSWORD: Joi.string().allow('').default(''),
+  SMTP_FROM_EMAIL: Joi.string().email().allow('').default(''),
+  SMTP_FROM_NAME: Joi.string().min(1).max(100).default('AI Test Generation'),
+  SMTP_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
+  SMTP_GREETING_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
+  SMTP_SOCKET_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(30000),
+  NOTIFICATION_WORKER_INTERVAL_MS: Joi.number().integer().min(1000).max(300000).default(5000),
   PAYMENT_PROVIDER: Joi.string().valid('', 'test', 'safepay').default(''),
   PAYMENT_WEBHOOK_SECRET: Joi.string().allow('').default(''),
   BILLING_SUCCESS_URL: Joi.string()
@@ -127,6 +141,19 @@ export const envSchema = Joi.object({
     return helpers.error('any.invalid', {
       message: 'The deterministic test payment provider is forbidden in production',
     });
+  if (
+    value.EMAIL_PROVIDER === 'smtp' &&
+    (!value.SMTP_HOST || !value.SMTP_FROM_EMAIL || (value.SMTP_USER && !value.SMTP_PASSWORD))
+  )
+    return helpers.error('any.invalid', {
+      message: 'SMTP requires host, from email, and password when a user is configured',
+    });
+  if (value.APP_ENV === 'production' && value.EMAIL_PROVIDER !== 'smtp')
+    return helpers.error('any.invalid', {
+      message: 'Production requires EMAIL_PROVIDER=smtp for critical account emails',
+    });
+  if (Number(value.SMTP_PORT) === 465 && value.SMTP_SECURE !== true)
+    return helpers.error('any.invalid', { message: 'SMTP port 465 requires SMTP_SECURE=true' });
   if (
     value.APP_ENV === 'production' &&
     value.PAYMENT_PROVIDER === 'safepay' &&

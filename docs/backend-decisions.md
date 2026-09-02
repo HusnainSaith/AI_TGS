@@ -128,3 +128,11 @@ Migration execution is dependency-ordered rather than simply core-first: core mi
 - Documented `TRAILING` is normalized to `TRIALING`; `UNPAID`, `INCOMPLETE`, and `PAUSED` use non-entitled local `PAST_DUE`; `INCOMPLETE_EXPIRED` and `ENDED` use `EXPIRED`; canceled spellings use `CANCELLED`. Resume restores `ACTIVE`. No enum/schema expansion is needed.
 - Passport tokens are cached for 110 seconds with a ten-second expiry margin and single-flight refresh. Safe GET retrieval may retry once; state-changing cancel is not automatically retried because already-canceled idempotency is not guaranteed.
 - No schema migration is required; existing provider IDs, normalized event JSON, minor-unit transactions, and plan mapping fields cover Safepay.
+
+## Notifications and SMTP email (2026-09-02)
+
+- In-app notifications, delivery attempts, and user preferences are PostgreSQL-backed. A polling worker claims due rows with `FOR UPDATE SKIP LOCKED`; processing leases recover abandoned work without requiring Redis.
+- Delivery is idempotent through unique semantic deduplication keys. SMTP attempts are bounded to three with exponential backoff; permanent recipient/server failures remain inspectable and require an authorized retry.
+- Nodemailer uses one pooled, TLS-validating transport and centralized escaped HTML/plain-text templates. Startup validation requires SMTP in production because verification, reset, and password-change messages are mandatory.
+- Verification and reset tokens remain SHA-256 digests in `auth_tokens`. Action URLs are stored only in AES-256-GCM encrypted delivery data; notification API metadata and logs never expose raw tokens.
+- Product email preferences may disable optional messages but cannot suppress account-security email. Health reports configuration only and never contacts the SMTP server; `npm run smtp:verify` performs an explicit connection/authentication check without sending mail.

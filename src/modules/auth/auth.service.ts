@@ -11,6 +11,8 @@ import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 import { AuthToken, AuthTokenType } from './auth-token.entity';
 import { LoginDto, RegisterDto } from './auth.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 type SafeUser = {
   id: string;
   name: string;
@@ -27,6 +29,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly notifications?: NotificationsService,
   ) {}
   private digest(token: string) {
     return createHash('sha256').update(token).digest('hex');
@@ -68,6 +71,16 @@ export class AuthService {
       action: 'USER_REGISTERED',
       entityType: 'user',
       entityId: user.id,
+    });
+    await this.notifications?.create({
+      userId: user.id,
+      type: NotificationType.EMAIL_VERIFICATION,
+      title: 'Verify your email',
+      message: 'Verify your email address to activate all account features.',
+      deduplicationKey: `auth:verify:${user.id}:${this.digest(verificationToken)}`,
+      secureEmailMetadata: {
+        actionUrl: `${this.config.get<string>('app.frontendUrl')}/verify-email?token=${encodeURIComponent(verificationToken)}`,
+      },
     });
     return {
       user: this.safe(user),
@@ -180,6 +193,17 @@ export class AuthService {
       AuthTokenType.PASSWORD_RESET,
       60 * 60 * 1000,
     );
+    await this.notifications?.create({
+      userId: user.id,
+      type: NotificationType.PASSWORD_RESET,
+      title: 'Reset your password',
+      message:
+        'A password reset was requested for your account. Ignore this email if it was not you.',
+      deduplicationKey: `auth:reset:${user.id}:${this.digest(resetToken)}`,
+      secureEmailMetadata: {
+        actionUrl: `${this.config.get<string>('app.frontendUrl')}/reset-password?token=${encodeURIComponent(resetToken)}`,
+      },
+    });
     return { resetToken: this.config.get('app.env') === 'development' ? resetToken : undefined };
   }
   async resetPassword(raw: string, password: string) {
@@ -190,6 +214,14 @@ export class AuthService {
       { password_hash: await hash(password) },
     );
     await this.logoutAll(token.userId);
+    await this.notifications?.create({
+      userId: token.userId,
+      type: NotificationType.PASSWORD_CHANGED,
+      title: 'Your password was changed',
+      message:
+        'Your account password was changed. Contact support immediately if this was not you.',
+      deduplicationKey: `auth:password-changed:${token.id}`,
+    });
   }
   private async consumeOpaque(raw: string, type: AuthTokenType) {
     const token = await this.tokens.findOneBy({ tokenHash: this.digest(raw), type });

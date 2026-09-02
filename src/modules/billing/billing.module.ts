@@ -15,9 +15,11 @@ import { DeterministicTestPaymentProvider } from './deterministic-test-payment.p
 import { SafepayPaymentProvider } from './safepay-payment.provider';
 import { ConfigService } from '@nestjs/config';
 import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     AuditModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       Plan,
       PlanProviderPrice,

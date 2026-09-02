@@ -9,6 +9,7 @@ export const configuration = () => ({
       .filter(Boolean),
     swagger: process.env.SWAGGER_ENABLED !== 'false',
     trustProxy: process.env.TRUST_PROXY === 'true',
+    frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   },
   database: {
     host: process.env.DATABASE_HOST,
@@ -99,6 +100,22 @@ export const configuration = () => ({
       secretKey: process.env.SAFEPAY_SECRET_KEY || '',
       webhookSecret: process.env.SAFEPAY_WEBHOOK_SECRET || '',
       timeoutMs: Number(process.env.SAFEPAY_TIMEOUT_MS ?? 15000),
+    },
+  },
+  email: {
+    provider: process.env.EMAIL_PROVIDER || '',
+    fromEmail: process.env.SMTP_FROM_EMAIL || '',
+    fromName: process.env.SMTP_FROM_NAME || 'AI Test Generation',
+    workerIntervalMs: Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS ?? 5000),
+    smtp: {
+      host: process.env.SMTP_HOST || '',
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      user: process.env.SMTP_USER || '',
+      password: process.env.SMTP_PASSWORD || '',
+      connectionTimeoutMs: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS ?? 10000),
+      greetingTimeoutMs: Number(process.env.SMTP_GREETING_TIMEOUT_MS ?? 10000),
+      socketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS ?? 30000),
     },
   },
   pdf: {

@@ -26,8 +26,18 @@ export interface EmbeddingProvider {
   embedBatch(texts: readonly string[]): Promise<readonly EmbeddingResult[]>;
 }
 export const EMAIL_PROVIDER = Symbol('EmailProvider');
+export interface EmailMessage {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+}
 export interface EmailProvider {
-  send(input: { to: string; template: string; variables: Record<string, string> }): Promise<void>;
+  readonly name: string;
+  readonly configured: boolean;
+  send(input: EmailMessage): Promise<void>;
+  verify(): Promise<boolean>;
 }
 export const PAYMENT_PROVIDER = Symbol('PaymentProvider');
 export type BillingOwnerType = 'USER' | 'SCHOOL';

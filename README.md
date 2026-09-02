@@ -183,3 +183,9 @@ Current official APIs use `GET /client/subscriptions/v1/{id}` for authoritative 
 | planCreate / planGet / planUpdate / planSearch / planArchive | PARTIALLY_SUPPORTED | Provider APIs documented; dashboard/admin mapping remains the commercial workflow |
 
 For local webhook delivery Safepay requires a publicly reachable endpoint (HTTPS with TLS 1.2/1.3 for live). Configure that URL in the Safepay dashboard; do not hard-code tunnel URLs. Optional connectivity validation is `RUN_SAFEPAY_SANDBOX_TESTS=true npm run test:safepay:sandbox` and refuses non-sandbox environments. No card data crosses this backend.
+
+## Notifications and SMTP
+
+Configure `EMAIL_PROVIDER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional `SMTP_USER`/`SMTP_PASSWORD`, and `SMTP_FROM_EMAIL`. `FRONTEND_URL` is used for verification and reset links. Production refuses to start without a complete SMTP configuration.
+
+The application runs a PostgreSQL-backed delivery worker every `NOTIFICATION_WORKER_INTERVAL_MS` (default 5 seconds). It is safe across multiple instances and retries transient failures at most three times. Check connection/authentication without sending a message with `npm run smtp:verify`. Apply all pending core migrations before deployment.

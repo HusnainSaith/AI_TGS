@@ -11,12 +11,14 @@ import { TestExportsController } from './test-exports.controller';
 import { TestExportsService } from './test-exports.service';
 import { PDF_RENDERER } from './test-render-model';
 import { TestRenderModelService } from './test-render-model.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([TestExport, ExamTest, TestQuestion]),
     StorageModule,
     AuditModule,
     SubscriptionsModule,
+    NotificationsModule,
   ],
   controllers: [TestExportsController],
   providers: [
