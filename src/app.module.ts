@@ -27,6 +27,7 @@ import { TestsModule } from './modules/tests/tests.module';
 import { TestExportsModule } from './modules/test-exports/test-exports.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReportingModule } from './modules/reporting/reporting.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -55,6 +56,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     TestExportsModule,
     BillingModule,
     NotificationsModule,
+    ReportingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -26,7 +26,15 @@ export interface TestRenderModel {
     finalizedAt: Date;
   };
   curriculum: { board: string; className: string; section: string | null; subject: string };
-  institution: { name: string | null };
+  institution: {
+    name: string | null;
+    logo?: Buffer;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    website?: string | null;
+    footer?: string | null;
+  };
   teacher: { displayName: string };
   questions: RenderQuestion[];
 }

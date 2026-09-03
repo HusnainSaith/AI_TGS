@@ -29,6 +29,7 @@ import {
   QuestionReviewStatus,
   QuestionSource,
   QuestionStatus,
+  QuestionVisibility,
 } from './enums/question.enums';
 import { QuestionValidatorService } from './question-validator.service';
 @Injectable()
@@ -92,8 +93,19 @@ export class QuestionsService {
     qb: ReturnType<Repository<Question>['createQueryBuilder']>,
     user: AuthenticatedUser,
   ) {
-    if (user.role !== UserRole.SYSTEM_ADMIN)
-      qb.andWhere('question.createdBy=:ownerId', { ownerId: user.id });
+    if (user.role !== UserRole.SYSTEM_ADMIN) {
+      if (user.schoolId)
+        qb.andWhere(
+          '(question.createdBy=:ownerId OR (question.visibility=:schoolVisibility AND question.sharedSchoolId=:schoolId AND question.reviewStatus=:approved))',
+          {
+            ownerId: user.id,
+            schoolVisibility: QuestionVisibility.SCHOOL,
+            schoolId: user.schoolId,
+            approved: QuestionReviewStatus.APPROVED,
+          },
+        );
+      else qb.andWhere('question.createdBy=:ownerId', { ownerId: user.id });
+    }
     return qb;
   }
   private response(q: Question): QuestionResponse {
@@ -112,6 +124,8 @@ export class QuestionsService {
       reviewStatus: q.reviewStatus,
       status: q.status,
       groundingStatus: q.groundingStatus,
+      visibility: q.visibility,
+      sharedSchoolId: q.sharedSchoolId,
       options: (q.options ?? [])
         .sort((a, b) => a.optionOrder - b.optionOrder)
         .map((o) => ({
@@ -174,6 +188,9 @@ export class QuestionsService {
         groundingStatus: GroundingStatus.NOT_APPLICABLE,
         generationJobId: null,
         retrievalEventId: null,
+        visibility: QuestionVisibility.PRIVATE,
+        sharedSchoolId: null,
+        publishedAt: null,
       });
       await this.replaceOptions(manager, q.id, options ?? []);
       await this.audit.record(
@@ -240,6 +257,9 @@ export class QuestionsService {
       generationJobId: input.generationJobId,
       generationJobItemId: input.generationJobItemId,
       retrievalEventId: input.retrievalEventId,
+      visibility: QuestionVisibility.PRIVATE,
+      sharedSchoolId: null,
+      publishedAt: null,
     });
     await this.replaceOptions(manager, question.id, input.options);
     await manager.getRepository(QuestionCitation).save(
@@ -418,6 +438,62 @@ export class QuestionsService {
         await manager
           .getRepository(Question)
           .findOneOrFail({ where: { id }, relations: { options: true } }),
+      );
+    });
+  }
+  async publishToSchool(id: string, user: AuthenticatedUser) {
+    if (!user.schoolId) throw new ForbiddenException('School membership required');
+    const q = await this.questions
+      .createQueryBuilder('q')
+      .innerJoin('q.creator', 'creator')
+      .leftJoinAndSelect('q.options', 'option')
+      .where('q.id=:id AND creator.schoolId=:schoolId', { id, schoolId: user.schoolId })
+      .getOne();
+    if (!q) throw new NotFoundException('Question not found');
+    if (q.status !== QuestionStatus.ACTIVE || q.reviewStatus !== QuestionReviewStatus.APPROVED)
+      throw new BadRequestException('Only active approved questions may be shared');
+    await this.data.transaction(async (manager) => {
+      await manager.getRepository(Question).update(id, {
+        visibility: QuestionVisibility.SCHOOL,
+        sharedSchoolId: user.schoolId,
+        publishedAt: new Date(),
+      });
+      await this.audit.record(
+        {
+          actorId: user.id,
+          action: 'question.school.publish',
+          entityType: 'question',
+          entityId: id,
+          metadata: { schoolId: user.schoolId, source: q.source },
+        },
+        manager,
+      );
+    });
+    return this.find(id, user);
+  }
+  async unpublishFromSchool(id: string, user: AuthenticatedUser) {
+    if (!user.schoolId) throw new ForbiddenException('School membership required');
+    const q = await this.questions.findOneBy({
+      id,
+      sharedSchoolId: user.schoolId,
+      visibility: QuestionVisibility.SCHOOL,
+    });
+    if (!q) throw new NotFoundException('Shared question not found');
+    await this.data.transaction(async (manager) => {
+      await manager.getRepository(Question).update(id, {
+        visibility: QuestionVisibility.PRIVATE,
+        sharedSchoolId: null,
+        publishedAt: null,
+      });
+      await this.audit.record(
+        {
+          actorId: user.id,
+          action: 'question.school.unpublish',
+          entityType: 'question',
+          entityId: id,
+          metadata: { schoolId: user.schoolId },
+        },
+        manager,
       );
     });
   }

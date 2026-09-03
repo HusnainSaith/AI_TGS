@@ -17,7 +17,14 @@ const model = (mode: TestRenderMode, count = 1): TestRenderModel => ({
     finalizedAt: new Date('2026-01-01T00:00:00Z'),
   },
   curriculum: { board: 'Board', className: 'Class 9', section: 'A', subject: 'Math' },
-  institution: { name: 'Example School' },
+  institution: {
+    name: 'Example School',
+    address: '1 Learning Road',
+    phone: '555-0100',
+    email: 'office@example.test',
+    website: 'school.example',
+    footer: 'Excellence in learning',
+  },
   teacher: { displayName: 'Teacher' },
   questions: Array.from({ length: count }, (_, index) => ({
     number: index + 1,

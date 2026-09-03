@@ -4,7 +4,7 @@
 
 This audit began at commit `92ecf6f66b7a66fb73bb029facf627f67a5689b6` and has been updated for the BullMQ worker implementation against the complete Master SRS v2.2. The implementation has a strong, tested core, including independently runnable asynchronous workers. The real OpenRouter/RAG path has also been manually accepted.
 
-Backend feature development is nevertheless not complete against the SRS. BullMQ workers and the guided generation, progress-streaming, prompt-sanitization, and duplicate-prevention contracts are now implemented. Several substantial promises remain incomplete: school/user administration and shared-bank governance, reporting/analytics, test sections, full payment lifecycle behavior, source-issue workflows, and complete PDF branding/internationalization.
+Backend feature development is nevertheless not complete against the SRS. School-scoped sharing, current-cycle usage/storage reporting, and immutable complete PDF branding are now implemented. Substantial gaps remain in test sections, billing lifecycle behavior, source-issue workflows, OCR quality, observability, and operational recovery evidence.
 
 **Final verdict: D. BACKEND HAS MAJOR FEATURE GAPS.**
 
@@ -26,14 +26,14 @@ No application code, migration, environment, database data, provider, payment sy
 | Metric | Value |
 |---|---:|
 | TOTAL_BACKEND_REQUIREMENTS | 80 |
-| IMPLEMENTED | 53 |
-| PARTIAL | 23 |
-| NOT_IMPLEMENTED | 2 |
+| IMPLEMENTED | 56 |
+| PARTIAL | 21 |
+| NOT_IMPLEMENTED | 1 |
 | DEFERRED | 2 |
 | NOT_APPLICABLE | 0 |
 | Actionable requirements | 78 |
-| Strict completion | 53 / 78 = **67.9%** |
-| Weighted completion | (53 + 0.5 × 23) / 78 = **82.7%** |
+| Strict completion | 56 / 78 = **71.8%** |
+| Weighted completion | (56 + 0.5 × 21) / 78 = **85.3%** |
 
 “Actionable” excludes DEFERRED and NOT_APPLICABLE. The weighted metric gives PARTIAL requirements half credit; it does not imply launch readiness.
 
@@ -80,13 +80,13 @@ No application code, migration, environment, database data, provider, payment sy
 | FR-35 | Professional A4 PDF with examination metadata | IMPLEMENTED | `PdfLibRenderer`; PDF tests/real acceptance | — |
 | FR-36 | Answer key/model answers/explanations | IMPLEMENTED | answer-key render mode and snapshot data | — |
 | FR-37 | Authorized download/open/share/print | IMPLEMENTED | export create/list/get/download; private object storage | Backend supplies authorized download bytes; client owns OS share/print. |
-| FR-38 | Full school branding/footer/logo | PARTIAL | institution name and curriculum metadata rendered | Logo, address, phone, email, website, and custom footer are not rendered. **HIGH.** Extend immutable render model and asset validation. |
+| FR-38 | Full school branding/footer/logo | IMPLEMENTED | private validated logo upload; finalization-time branding snapshot; render-model/PDF tests | School name, logo, address, phone, email, website, and footer render from server-owned immutable branding. RTL/custom fonts are outside FR-38. |
 | FR-39 | Excel/CSV/Word/JSON question import | DEFERRED | SRS Phase 2; project decision | Explicit Phase 2 item. |
 | FR-40 | AI review gate | IMPLEMENTED | PENDING generated questions, approve endpoint, finalized-test eligibility | — |
 | FR-41 | Server-enforced transactional quotas/ledger | IMPLEMENTED | entitlement/usage services, reservations/ledger, PostgreSQL E2E and real acceptance | — |
 | FR-42 | Purchase, plan change, renewal, methods, webhook sync | PARTIAL | billing checkout/cancel/webhook/event/reconcile and Safepay adapter | Safepay lacks customer/portal/plan-change capabilities; live end-to-end validation is absent. **HIGH.** Complete required provider lifecycle and staging acceptance. |
-| FR-43 | Teacher/school usage dashboard including storage | PARTIAL | `/subscription/usage`; AI/TEST/PDF counters | No dashboard/report API beyond current subscription row and storage consumption is not integrated into upload. **HIGH.** Add scoped aggregate usage endpoints and storage accounting. |
-| FR-44 | School-admin shared curriculum/question bank publication | NOT_IMPLEMENTED | School membership exists; read scoping exists | No school-admin user/teacher/shared-bank publishing workflow; curriculum mutations are SYSTEM_ADMIN-only. **HIGH.** Implement school governance and shared ownership model. |
+| FR-43 | Teacher/school usage dashboard including storage | IMPLEMENTED | `GET /reports/usage`; current-cycle counters; document/PDF byte aggregation; tests | Teacher reports are self-scoped and School Admin reports are school-scoped. |
+| FR-44 | School-admin shared curriculum/question bank publication | IMPLEMENTED | school teacher/curriculum APIs; centralized question visibility; moderation; Test Builder integration; audit/tests | Active approved manual and AI questions can be school-published; cross-school visibility is denied and finalized snapshots remain immutable. |
 | FR-45 | Critical audit logging | IMPLEMENTED | `AuditService`; mutations across auth/curriculum/KB/generation/quota/tests/billing | — |
 | FR-46 | Governed KB document management | IMPLEMENTED | KB controller/service, versions, rights, archive, tenant rules | — |
 | FR-47 | Async ingestion through publication readiness | PARTIAL | durable ingestion jobs, leases, BullMQ producer/worker, scan/extract/chunk flow | Queue execution is implemented; embedding and publication remain separate governed actions rather than one uninterrupted async chain. **HIGH.** Complete the post-mapping orchestration where governance permits. |
@@ -127,7 +127,7 @@ No application code, migration, environment, database data, provider, payment sy
 | NFR-17 | Circuit breakers and provider observability | NOT_IMPLEMENTED | timeouts/errors and token metadata only | No circuit breaker, metrics exporter, traces, or alert integration. **HIGH.** Add OpenTelemetry/metrics and provider health policy. |
 | NFR-18 | Shadow reindex/evaluation/atomic switch/rollback | PARTIAL | parallel embedding configs and completeness checks | No evaluation gate, active-index switch abstraction, or rollback command. **HIGH.** Implement version activation workflow. |
 | NFR-19 | Backup/recovery/retention | PARTIAL | documented pg_dump/object-storage procedure | No executed restore evidence, schedule, retention enforcement, or RPO/RTO. **HIGH operational.** Run staging restore drill. |
-| NFR-20 | Required security/quality/load test breadth | PARTIAL | 172 unit and 29 DB E2E tests, queue producer/processor tests, adversarial prompt-input corpus, plus real AI acceptance | Missing live Redis replay/recovery, load, broader security corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
+| NFR-20 | Required security/quality/load test breadth | PARTIAL | 175 unit and 29 DB E2E tests, queue producer/processor tests, adversarial prompt-input corpus, plus real AI acceptance | Missing live Redis replay/recovery, load, broader security corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
 
 ## 6. Authentication
 
@@ -311,7 +311,7 @@ Before production (but not before an isolated engineering staging deployment), p
 ## 29. Prioritized Remaining Work
 
 - **P0 — before representative staging:** deploy Redis and independent workers, validate live enqueue/consume/replay/shutdown behavior, and add process supervision/worker-staleness monitoring.
-- **P1 — product completion before production:** school/user administration and sharing, usage/storage reporting, and PDF school branding; then payment lifecycle, monitoring/tracing, secrets/TLS, backup restore, adversarial tenant/load tests, and production scanner/storage.
+- **P1 — product completion before production:** test sections and bounded malformed-item retries; then ingestion/OCR completeness, payment lifecycle, monitoring/tracing, secrets/TLS, backup restore, adversarial tenant/load tests, and production scanner/storage.
 - **P2 — subsequent product batches:** test sections, usage/reporting APIs, KB source issues/range mapping/evaluation rollback, full audit coverage, and profile image.
 - **P3 — deferred/optional:** multiple versions, imports, advanced analytics/reranking, OCR/multimodal expansion, advanced branding and RTL fonts.
 
@@ -319,4 +319,4 @@ Before production (but not before an isolated engineering staging deployment), p
 
 **D. BACKEND HAS MAJOR FEATURE GAPS**
 
-The core application services are unusually complete and well-tested, the real grounded AI path is proven, and asynchronous worker architecture plus the complete guided-generation/duplicate/progress contract now satisfy the defining workflow in code. However, SRS traceability—not module count—controls this verdict: school administration/sharing, reporting, test sections, and several operationally essential behaviors remain material. The next product batch should complete school administration, shared-bank governance, usage/storage reporting, and PDF branding before infrastructure work resumes.
+The core application services are unusually complete and well-tested, and school governance, reporting, and immutable PDF branding now satisfy this selected batch. However, SRS traceability—not module count—controls this verdict: test sections, ingestion/OCR completeness, billing lifecycle, and several operationally essential behaviors remain material. The next cohesive product batch should implement test sections and bounded malformed-item regeneration.

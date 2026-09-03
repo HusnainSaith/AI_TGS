@@ -22,6 +22,11 @@ export enum QuestionStatus {
   ACTIVE = 'ACTIVE',
   ARCHIVED = 'ARCHIVED',
 }
+export enum QuestionVisibility {
+  PRIVATE = 'PRIVATE',
+  SCHOOL = 'SCHOOL',
+  GLOBAL = 'GLOBAL',
+}
 export enum GroundingStatus {
   NOT_APPLICABLE = 'NOT_APPLICABLE',
   GROUNDED = 'GROUNDED',

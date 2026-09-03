@@ -23,6 +23,8 @@ import { TestQuestion } from './test-question.entity';
 @Check('total_marks>=0')
 @Check('total_questions>=0')
 export class ExamTest extends BaseEntity {
+  @Column({ name: 'branding_snapshot', type: 'jsonb', nullable: true })
+  brandingSnapshot!: Record<string, unknown> | null;
   @Column({ name: 'created_by', type: 'uuid' }) createdBy!: string;
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'created_by' })

@@ -9,6 +9,7 @@ import {
   QuestionSource,
   QuestionStatus,
   QuestionType,
+  QuestionVisibility,
 } from '../enums/question.enums';
 import { QuestionOption } from './question-option.entity';
 const numericTransformer = { to: (v: number) => v, from: (v: string) => Number(v) };
@@ -17,6 +18,16 @@ const numericTransformer = { to: (v: number) => v, from: (v: string) => Number(v
 @Check('marks > 0')
 @Check('length(btrim(question_text)) > 0')
 export class Question extends BaseEntity {
+  @Column({
+    type: 'enum',
+    enum: QuestionVisibility,
+    enumName: 'question_visibility',
+    default: QuestionVisibility.PRIVATE,
+  })
+  visibility!: QuestionVisibility;
+  @Column({ name: 'shared_school_id', type: 'uuid', nullable: true }) sharedSchoolId!:
+    string | null;
+  @Column({ name: 'published_at', type: 'timestamptz', nullable: true }) publishedAt!: Date | null;
   @Column({ name: 'topic_id', type: 'uuid' }) topicId!: string;
   @ManyToOne(() => Topic, { onDelete: 'RESTRICT' }) @JoinColumn({ name: 'topic_id' }) topic!: Topic;
   @Column({ name: 'chapter_id', type: 'uuid' }) chapterId!: string;

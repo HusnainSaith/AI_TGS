@@ -33,6 +33,8 @@ import { TestQuestion } from './entities/test-question.entity';
 import { TestSnapshotService } from './test-snapshot.service';
 import { TestStatus } from './test.enums';
 import { NotificationsService } from '../notifications/notifications.service';
+import { School } from '../schools/school.entity';
+import { QuestionVisibility } from '../questions/enums/question.enums';
 import { NotificationType } from '../notifications/notification.types';
 @Injectable()
 export class TestsService {
@@ -63,6 +65,7 @@ export class TestsService {
         clonedFromTestId: null,
         finalizedAt: null,
         archivedAt: null,
+        brandingSnapshot: null,
       });
       await this.audit.record(
         {
@@ -287,7 +290,34 @@ export class TestsService {
       const ent = await this.entitlement.resolve(user, UsageMetric.TESTS, m);
       await this.usage.consume(ent, 1, 'TEST_FINALIZATION', id, user.id, m);
       const totals = this.calculate(qs);
-      Object.assign(t, { status: TestStatus.FINALIZED, finalizedAt: new Date(), ...totals });
+      const school = t.schoolId
+        ? await m.getRepository(School).findOneBy({ id: t.schoolId })
+        : null;
+      const brandingSnapshot = school
+        ? {
+            name: school.name,
+            logoStorageKey: school.logoUrl,
+            address: school.address,
+            phone: school.phone,
+            email: school.email,
+            website: school.website,
+            footer: school.footer,
+          }
+        : {
+            name: null,
+            logoStorageKey: null,
+            address: null,
+            phone: null,
+            email: null,
+            website: null,
+            footer: null,
+          };
+      Object.assign(t, {
+        status: TestStatus.FINALIZED,
+        finalizedAt: new Date(),
+        brandingSnapshot,
+        ...totals,
+      });
       await m.getRepository(ExamTest).save(t);
       await this.audit.record(
         {
@@ -331,6 +361,7 @@ export class TestsService {
         clonedFromTestId: source.id,
         finalizedAt: null,
         archivedAt: null,
+        brandingSnapshot: null,
       });
       const qs = await m.getRepository(TestQuestion).findBy({ testId: id });
       await m.getRepository(TestQuestion).save(
@@ -380,7 +411,13 @@ export class TestsService {
     });
   }
   private eligible(q: Question, t: ExamTest, user: AuthenticatedUser, finalizing: boolean) {
-    if (user.role !== UserRole.SYSTEM_ADMIN && q.createdBy !== user.id)
+    const authorizedShared = Boolean(
+      user.schoolId &&
+      q.visibility === QuestionVisibility.SCHOOL &&
+      q.sharedSchoolId === user.schoolId &&
+      q.reviewStatus === QuestionReviewStatus.APPROVED,
+    );
+    if (user.role !== UserRole.SYSTEM_ADMIN && q.createdBy !== user.id && !authorizedShared)
       throw new ForbiddenException('Question belongs to another teacher');
     if (q.status !== QuestionStatus.ACTIVE) throw new BadRequestException('Question is not active');
     if (q.classId !== t.classId || q.subjectId !== t.subjectId)

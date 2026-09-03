@@ -18,6 +18,16 @@ describe('TestRenderModel security boundary', () => {
     subject: { name: 'Math' },
     section: null,
     school: null,
+    schoolId: 'school-1',
+    brandingSnapshot: {
+      name: 'Snapshot School',
+      address: 'Old address',
+      phone: '123',
+      email: 'old@example.test',
+      website: 'old.example',
+      footer: 'Old footer',
+      logoStorageKey: null,
+    },
     creator: { name: 'Teacher' },
   };
   const snapshot = {
@@ -50,6 +60,11 @@ describe('TestRenderModel security boundary', () => {
   it('excludes answer fields from QUESTION_PAPER and includes them in ANSWER_KEY', async () => {
     const paper = await service.build('test', TestRenderMode.QUESTION_PAPER);
     expect(paper.questions[0]).not.toHaveProperty('answer');
+    expect(paper.institution).toMatchObject({
+      name: 'Snapshot School',
+      address: 'Old address',
+      footer: 'Old footer',
+    });
     expect(paper.questions[0]!.options).toEqual([
       { label: 'A', text: '3' },
       { label: 'B', text: '4' },

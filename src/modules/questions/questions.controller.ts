@@ -69,4 +69,17 @@ export class QuestionsController {
   approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.questions.approve(id, user);
   }
+  @Post(':id/publish-to-school')
+  @Roles(UserRole.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Publish an approved question to the administrator school bank' })
+  publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.publishToSchool(id, user);
+  }
+  @Delete(':id/publish-to-school')
+  @HttpCode(204)
+  @Roles(UserRole.SCHOOL_ADMIN)
+  @ApiOperation({ summary: 'Remove a question from the administrator school bank' })
+  unpublish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.questions.unpublishFromSchool(id, user);
+  }
 }

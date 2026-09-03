@@ -12,6 +12,7 @@ import {
   Topic,
 } from '../modules/curriculum/curriculum.entities';
 import { School } from '../modules/schools/school.entity';
+import { SchoolCurriculumPublication } from '../modules/schools/school-curriculum-publication.entity';
 import { User } from '../modules/users/user.entity';
 import { Question } from '../modules/questions/entities/question.entity';
 import { QuestionOption } from '../modules/questions/entities/question-option.entity';
@@ -59,6 +60,7 @@ export default new DataSource({
   synchronize: false,
   entities: [
     School,
+    SchoolCurriculumPublication,
     User,
     AuthToken,
     Board,

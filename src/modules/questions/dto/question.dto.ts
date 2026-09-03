@@ -22,6 +22,7 @@ import {
   QuestionSource,
   QuestionStatus,
   QuestionType,
+  QuestionVisibility,
 } from '../enums/question.enums';
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 export class QuestionOptionDto {
@@ -105,6 +106,8 @@ export interface QuestionResponse {
   reviewStatus: QuestionReviewStatus;
   status: QuestionStatus;
   groundingStatus: GroundingStatus;
+  visibility: QuestionVisibility;
+  sharedSchoolId: string | null;
   options: Array<{ id: string; optionText: string; optionOrder: number; isCorrect: boolean }>;
   createdAt: Date;
   updatedAt: Date;

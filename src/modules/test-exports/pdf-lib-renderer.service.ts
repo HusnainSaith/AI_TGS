@@ -21,7 +21,7 @@ export class PdfLibRenderer implements PdfRenderer {
     const size = { width: 595.28, height: 841.89 },
       margin = 50,
       bottom = 55;
-    let page: PDFPage,
+    let page!: PDFPage,
       y = 0;
     const addPage = () => {
       page = doc.addPage([size.width, size.height]);
@@ -50,7 +50,34 @@ export class PdfLibRenderer implements PdfRenderer {
       });
       y -= fontSize + 8;
     };
+    if (model.institution.logo) {
+      try {
+        const embedded = model.institution.logo
+          .subarray(0, 8)
+          .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          ? await doc.embedPng(model.institution.logo)
+          : await doc.embedJpg(model.institution.logo);
+        const scaled = embedded.scaleToFit(55, 45);
+        page.drawImage(embedded, {
+          x: margin,
+          y: y - scaled.height + 5,
+          width: scaled.width,
+          height: scaled.height,
+        });
+      } catch {
+        throw new BadRequestException('Invalid school logo');
+      }
+    }
     center(model.institution.name ?? 'AI Test Generation System', 14, bold);
+    const contact = [
+      model.institution.address,
+      model.institution.phone,
+      model.institution.email,
+      model.institution.website,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    if (contact) center(contact, 8, regular);
     center(
       model.mode === TestRenderMode.ANSWER_KEY
         ? `${model.test.title} - ANSWER KEY`
@@ -111,6 +138,10 @@ export class PdfLibRenderer implements PdfRenderer {
     const pages = doc.getPages();
     pages.forEach((p, index) => {
       const label = `Page ${index + 1} of ${pages.length}`;
+      if (model.institution.footer) {
+        const footer = this.safe(model.institution.footer, regular, 8).slice(0, 120);
+        p.drawText(footer, { x: margin, y: 38, font: regular, size: 8, color: rgb(0.3, 0.3, 0.3) });
+      }
       p.drawText(label, {
         x: (size.width - regular.widthOfTextAtSize(label, 9)) / 2,
         y: 25,
