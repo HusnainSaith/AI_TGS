@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { QuestionDifficulty } from '../questions/enums/question.enums';
 import { CreateGenerationDto } from './dto/generation.dto';
 import { GenerationUnit } from './generation.contracts';
+import { marksFor } from './question-marks';
 @Injectable()
 export class GenerationUnitExpander {
   constructor(private readonly config: ConfigService) {}
@@ -14,6 +15,7 @@ export class GenerationUnitExpander {
         const total = mix.difficulty.easy + mix.difficulty.medium + mix.difficulty.hard;
         if (total !== mix.count)
           throw new BadRequestException(`Difficulty counts must equal ${mix.type} count`);
+        if (!unit.topicId) throw new BadRequestException('Generation unit Topic was not resolved');
         const key = `${unit.topicId}:${mix.type}`;
         if (seen.has(key))
           throw new BadRequestException('Each Topic and question type may appear only once');
@@ -36,6 +38,11 @@ export class GenerationUnitExpander {
     if (!total) throw new BadRequestException('At least one question must be requested');
     if (total > this.config.getOrThrow<number>('aiGeneration.maxQuestionsPerRequest'))
       throw new BadRequestException('Requested question count exceeds the configured maximum');
+    const totalMarks = result.reduce((sum, unit) => sum + marksFor(unit.type) * unit.count, 0);
+    if (dto.targetMarks !== undefined && Math.abs(dto.targetMarks - totalMarks) > 0.001)
+      throw new BadRequestException(
+        `targetMarks must equal the generated mix total (${totalMarks})`,
+      );
     return result.sort(
       (a, b) =>
         a.topicId.localeCompare(b.topicId) ||

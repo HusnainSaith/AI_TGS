@@ -15,13 +15,16 @@ export function encryptEmailTemplateData(
 export function decryptEmailTemplateData(value: string, key: Buffer, binding: string) {
   const [iv, tag, encrypted] = value.split('.');
   if (!iv || !tag || !encrypted) throw new Error('Invalid encrypted template data');
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'));
+  const decode = (part: string) => {
+    if (!/^[A-Za-z0-9_-]+$/.test(part)) throw new Error('Invalid encrypted template data');
+    const decoded = Buffer.from(part, 'base64url');
+    if (decoded.toString('base64url') !== part) throw new Error('Invalid encrypted template data');
+    return decoded;
+  };
+  const decipher = createDecipheriv('aes-256-gcm', key, decode(iv));
   decipher.setAAD(Buffer.from(binding, 'utf8'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+  decipher.setAuthTag(decode(tag));
   return JSON.parse(
-    Buffer.concat([
-      decipher.update(Buffer.from(encrypted, 'base64url')),
-      decipher.final(),
-    ]).toString('utf8'),
+    Buffer.concat([decipher.update(decode(encrypted)), decipher.final()]).toString('utf8'),
   ) as Record<string, unknown>;
 }

@@ -19,6 +19,7 @@ import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
 import { NearDuplicateDetector } from './near-duplicate-detector';
 import { OpenAiGenerationProvider } from './openai-generation.provider';
 import { OpenRouterAiGenerationProvider } from './openrouter-generation.provider';
+import { PromptInputSanitizer } from './prompt-input-sanitizer.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 export function createAiGenerationProvider(config: ConfigService) {
   const provider = config.get<string>('aiGeneration.provider');
@@ -44,6 +45,7 @@ export function createAiGenerationProvider(config: ConfigService) {
     GroundedPromptBuilder,
     GenerationOutputValidator,
     NearDuplicateDetector,
+    PromptInputSanitizer,
     {
       provide: AI_GENERATION_PROVIDER,
       inject: [ConfigService],

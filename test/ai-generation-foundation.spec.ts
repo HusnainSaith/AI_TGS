@@ -7,6 +7,7 @@ import { CreateGenerationDto } from '../src/modules/ai-generation/dto/generation
 import { GenerationOutputValidator } from '../src/modules/ai-generation/generation-output-validator.service';
 import { GenerationUnitExpander } from '../src/modules/ai-generation/generation-unit-expander.service';
 import { GroundedPromptBuilder } from '../src/modules/ai-generation/grounded-prompt-builder.service';
+import { PromptInputSanitizer } from '../src/modules/ai-generation/prompt-input-sanitizer.service';
 
 const dto = (): CreateGenerationDto => ({
   classId: '00000000-0000-4000-8000-000000000001',
@@ -41,7 +42,7 @@ describe('Grounded AI generation foundation', () => {
     expect(() => expander.expand(tooMany)).toThrow('configured maximum');
   });
   it('delimits evidence and explicitly neutralizes prompt injection, tools, and secrets', () => {
-    const prompt = new GroundedPromptBuilder(new ConfigService()).build(
+    const prompt = new GroundedPromptBuilder(new ConfigService(), new PromptInputSanitizer()).build(
       {
         topicId: 't',
         chapterId: 'c',
@@ -88,7 +89,7 @@ describe('Grounded AI generation foundation', () => {
   });
   it('generates deterministically and validates count, objective structure, and citations', async () => {
     const provider = new DeterministicTestAiGenerationProvider();
-    const builder = new GroundedPromptBuilder(new ConfigService());
+    const builder = new GroundedPromptBuilder(new ConfigService(), new PromptInputSanitizer());
     const unit = {
       topicId: 't',
       chapterId: 'c',

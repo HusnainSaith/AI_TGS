@@ -113,6 +113,9 @@ export const configuration = () => ({
     maxQuestionsPerRequest: Number(process.env.AI_MAX_QUESTIONS_PER_REQUEST ?? 100),
     promptStrategyVersion: process.env.AI_PROMPT_STRATEGY_VERSION ?? 'grounded-question-v1',
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
+    duplicateTextThreshold: Number(process.env.AI_DUPLICATE_TEXT_THRESHOLD ?? 0.85),
+    duplicateEmbeddingThreshold: Number(process.env.AI_DUPLICATE_EMBEDDING_THRESHOLD ?? 0.92),
+    duplicateCandidateLimit: Number(process.env.AI_DUPLICATE_CANDIDATE_LIMIT ?? 500),
   },
   openRouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',

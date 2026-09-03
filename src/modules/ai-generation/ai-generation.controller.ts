@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Sse,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -48,6 +49,12 @@ export class AiGenerationController {
   @ApiOperation({ summary: 'List deterministic generation units and failures' })
   items(@Param('jobId', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.generation.listItems(id, user);
+  }
+  @Sse('jobs/:jobId/events')
+  @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Subscribe to owned generation-job progress using server-sent events' })
+  events(@Param('jobId', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.generation.stream(id, user);
   }
   @Get('jobs/:jobId/retrieval')
   @Roles(UserRole.TEACHER, UserRole.SCHOOL_ADMIN, UserRole.SYSTEM_ADMIN)

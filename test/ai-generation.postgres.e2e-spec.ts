@@ -81,6 +81,7 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
     subject: randomUUID(),
     chapter: randomUUID(),
     topic: randomUUID(),
+    topic2: randomUUID(),
     document: randomUUID(),
     version: randomUUID(),
     plan: randomUUID(),
@@ -188,6 +189,13 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
       name: 'Photosynthesis',
       description: 'Energy conversion in plants',
       order: 1,
+    });
+    await db.getRepository(Topic).insert({
+      id: id.topic2,
+      chapterId: id.chapter,
+      name: 'Respiration',
+      description: 'Energy release in cells',
+      order: 2,
     });
     await db.getRepository(KnowledgeDocument).insert({
       id: id.document,
@@ -304,7 +312,7 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
       await db.getRepository(ContentChunk).delete({ documentVersionId: id.version });
       await db.getRepository(DocumentVersion).delete(id.version);
       await db.getRepository(KnowledgeDocument).delete(id.document);
-      await db.getRepository(Topic).delete(id.topic);
+      await db.getRepository(Topic).delete([id.topic, id.topic2]);
       await db.getRepository(Chapter).delete(id.chapter);
       await db.getRepository(Subject).delete(id.subject);
       await db.getRepository(CurriculumClass).delete(id.cls);
@@ -331,6 +339,24 @@ run('Grounded AI generation with PostgreSQL (e2e)', () => {
     ],
     language: 'en',
     knowledgeBase: { mode: GroundingMode.REQUIRED, documentIds: documentIds ?? [] },
+  });
+  it('resolves all active chapter topics and persists validated retrieval constraints', async () => {
+    const value = request();
+    value.units = [
+      {
+        chapterId: id.chapter,
+        allTopics: true,
+        questionMix: [
+          { type: QuestionType.MCQ, count: 1, difficulty: { easy: 1, medium: 0, hard: 0 } },
+        ],
+      } as never,
+    ];
+    value.knowledgeBase = { ...value.knowledgeBase, topK: 5, minSimilarity: 0.5 } as never;
+    const created = await generation.create({ ...value, targetMarks: 2 }, teacher);
+    expect(created).toMatchObject({ requestedCount: 2, itemCount: 2 });
+    const items = await generation.listItems(created.id, teacher);
+    expect(new Set(items.map((item) => item.unitTopicId))).toEqual(new Set([id.topic, id.topic2]));
+    expect(items.every((item) => item.requestMetadata.topK === 5)).toBe(true);
   });
   it('creates, processes, grounds, cites, authorizes, and regenerates without overwriting history', async () => {
     const created = await generation.create(request(), teacher);

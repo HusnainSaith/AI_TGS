@@ -42,6 +42,8 @@ import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { AiGenerationQueueProducer } from '../../infrastructure/queue/queue-producers.service';
+import { NearDuplicateDetector } from './near-duplicate-detector';
+import { Observable, concatMap, from, map, takeWhile, timer } from 'rxjs';
 
 @Injectable()
 export class AiGenerationService {
@@ -55,6 +57,7 @@ export class AiGenerationService {
     private readonly retrieval: RetrievalService,
     private readonly questions: QuestionsService,
     private readonly output: GenerationOutputValidator,
+    private readonly duplicates: NearDuplicateDetector,
     private readonly prompts: GroundedPromptBuilder,
     private readonly embeddingConfig: EmbeddingConfigService,
     private readonly entitlements: GenerationEntitlementService,
@@ -67,13 +70,14 @@ export class AiGenerationService {
   async create(dto: CreateGenerationDto, user: AuthenticatedUser) {
     if (dto.knowledgeBase.mode !== GroundingMode.REQUIRED)
       throw new BadRequestException('Only REQUIRED grounding mode is enabled for MVP');
-    const units = this.expander.expand(dto);
-    const paths = await this.curriculum.validate(dto);
+    const resolvedDto = await this.curriculum.resolveAllTopics(dto);
+    const units = this.expander.expand(resolvedDto);
+    const paths = await this.curriculum.validate(resolvedDto);
     const embedding = this.embeddingConfig.active();
     const job = await this.data.transaction(async (manager) => {
       const saved = await manager.getRepository(GenerationJob).save({
         requestedBy: user.id,
-        requestPayload: dto as unknown as Record<string, unknown>,
+        requestPayload: resolvedDto as unknown as Record<string, unknown>,
         status: GenerationJobStatus.QUEUED,
         requestedCount: units.reduce((sum, unit) => sum + unit.count, 0),
         generatedCount: 0,
@@ -110,8 +114,13 @@ export class AiGenerationService {
           requestMetadata: {
             ...unit,
             curriculum: paths.get(unit.topicId),
-            language: dto.language,
-            documentIds: dto.knowledgeBase.documentIds ?? [],
+            language: resolvedDto.language,
+            documentIds: resolvedDto.knowledgeBase.documentIds ?? [],
+            topK: resolvedDto.knowledgeBase.topK,
+            minSimilarity: resolvedDto.knowledgeBase.minSimilarity,
+            avoidRepeatsFromLastNTests: resolvedDto.avoidRepeatsFromLastNTests ?? 0,
+            targetDurationMinutes: resolvedDto.targetDurationMinutes,
+            targetMarks: resolvedDto.targetMarks,
           },
           processingToken: null,
           leaseExpiresAt: null,
@@ -188,6 +197,9 @@ export class AiGenerationService {
       curriculum: ValidatedCurriculum;
       language: string;
       documentIds: string[];
+      topK?: number;
+      minSimilarity?: number;
+      avoidRepeatsFromLastNTests: number;
     };
     const unit: GenerationUnit = {
       topicId: item.unitTopicId,
@@ -207,6 +219,8 @@ export class AiGenerationService {
           topicId: meta.curriculum.topicId,
           language: meta.language,
           documentIds: meta.documentIds.length ? meta.documentIds : undefined,
+          topK: meta.topK,
+          minSimilarity: meta.minSimilarity,
         },
         user,
       );
@@ -236,6 +250,12 @@ export class AiGenerationService {
         result.output,
         unit,
         new Set(retrieval.evidence.map((e) => e.label)),
+      );
+      await this.duplicates.assertUnique(
+        generated.map((question) => question.questionText),
+        meta.curriculum.topicId,
+        user,
+        meta.avoidRepeatsFromLastNTests,
       );
       const questions = await this.data.transaction(async (manager) => {
         const saved = [];
@@ -501,6 +521,16 @@ export class AiGenerationService {
       entityId: id,
     });
     await this.entitlements.settle(id, user.id);
+  }
+  stream(id: string, user: AuthenticatedUser): Observable<{ data: unknown }> {
+    return timer(0, 1000).pipe(
+      concatMap(() => from(this.get(id, user))),
+      takeWhile(
+        (job) => ![GenerationJobStatus.COMPLETED, GenerationJobStatus.FAILED].includes(job.status),
+        true,
+      ),
+      map((job) => ({ data: job })),
+    );
   }
   private async scoped(id: string, user: AuthenticatedUser, relations = false) {
     const job = await this.jobs.findOne({

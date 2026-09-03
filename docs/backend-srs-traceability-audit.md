@@ -4,7 +4,7 @@
 
 This audit began at commit `92ecf6f66b7a66fb73bb029facf627f67a5689b6` and has been updated for the BullMQ worker implementation against the complete Master SRS v2.2. The implementation has a strong, tested core, including independently runnable asynchronous workers. The real OpenRouter/RAG path has also been manually accepted.
 
-Backend feature development is nevertheless not complete against the SRS. BullMQ dispatch, reconciliation, processors, and independent worker entry points now cover ingestion, embedding, generation, and PDF jobs. Several substantial promises remain incomplete: school/user administration and shared-bank governance, reporting/analytics, test sections, some generation constraints, embedding/history duplicate detection, full payment lifecycle behavior, source-issue workflows, and complete PDF branding/internationalization.
+Backend feature development is nevertheless not complete against the SRS. BullMQ workers and the guided generation, progress-streaming, prompt-sanitization, and duplicate-prevention contracts are now implemented. Several substantial promises remain incomplete: school/user administration and shared-bank governance, reporting/analytics, test sections, full payment lifecycle behavior, source-issue workflows, and complete PDF branding/internationalization.
 
 **Final verdict: D. BACKEND HAS MAJOR FEATURE GAPS.**
 
@@ -26,14 +26,14 @@ No application code, migration, environment, database data, provider, payment sy
 | Metric | Value |
 |---|---:|
 | TOTAL_BACKEND_REQUIREMENTS | 80 |
-| IMPLEMENTED | 49 |
-| PARTIAL | 27 |
+| IMPLEMENTED | 53 |
+| PARTIAL | 23 |
 | NOT_IMPLEMENTED | 2 |
 | DEFERRED | 2 |
 | NOT_APPLICABLE | 0 |
 | Actionable requirements | 78 |
-| Strict completion | 49 / 78 = **62.8%** |
-| Weighted completion | (49 + 0.5 × 27) / 78 = **80.1%** |
+| Strict completion | 53 / 78 = **67.9%** |
+| Weighted completion | (53 + 0.5 × 23) / 78 = **82.7%** |
 
 “Actionable” excludes DEFERRED and NOT_APPLICABLE. The weighted metric gives PARTIAL requirements half credit; it does not imply launch readiness.
 
@@ -61,11 +61,11 @@ No application code, migration, environment, database data, provider, payment sy
 | FR-16 | Full-text question search by text/academic data | PARTIAL | `QuestionsService.list`; `ListQuestionsDto` | Text uses pattern search rather than a dedicated PostgreSQL FTS index; academic fields are filters, not unified search. **MEDIUM.** Add indexed FTS/search-vector behavior and ranking tests. |
 | FR-17 | Question filtering including section and source | PARTIAL | `ListQuestionsDto` supports class/subject/chapter/topic/type/difficulty/marks/source/review/status | Questions have no section association/filter. **MEDIUM.** Define section-scoping semantics and add schema/API support if still required. |
 | FR-18 | Paginated question/test APIs | IMPLEMENTED | list DTOs/services and E2E tests | — |
-| FR-19 | Complete guided wizard contract and optional constraints | PARTIAL | generation DTO/curriculum validator/expander | `avoidRepeatsFromLastNTests`, target marks/duration, request topK/minSimilarity, and chapter “all topics” contract are incomplete. **HIGH.** Extend server-owned validated request orchestration. |
+| FR-19 | Complete guided wizard contract and optional constraints | IMPLEMENTED | generation DTO, chapter-wide active-topic resolver, curriculum validator, unit expander, server-owned marks validation, persisted duration/repeat/retrieval constraints | PostgreSQL E2E verifies all-topic expansion and retrieval metadata; request bounds remain server controlled. |
 | FR-20 | Async AI generation job | IMPLEMENTED | durable generation jobs/leases, BullMQ producer, independent AI worker, reconciliation | API creation commits PostgreSQL state before UUID-only dispatch; deterministic redelivery and database leases preserve idempotency. |
-| FR-21 | Poll/subscribe status and partial results | PARTIAL | job/items/retrieval GET APIs, statuses, and background worker progress | Polling and actual background progress exist; streaming/WebSocket subscription remains absent. **HIGH.** Add an optional event channel. |
+| FR-21 | Poll/subscribe status and partial results | IMPLEMENTED | job/items/retrieval polling plus authenticated `GET /ai/jobs/:jobId/events` SSE stream | SSE reuses owner-scoped status reads and closes after terminal state. |
 | FR-22 | Per-question regeneration | IMPLEMENTED | regeneration endpoint/service, reservations, tests | — |
-| FR-23 | Exact + embedding duplicate checks across batch/bank/recent tests | PARTIAL | `near-duplicate-detector.ts`; generation service | Current protection is textual/normalized similarity; no embedding comparison or recent-test window. **HIGH.** Add scoped embedding/history candidate search and tests. |
+| FR-23 | Exact + embedding duplicate checks across batch/bank/recent tests | IMPLEMENTED | owner/topic-scoped bank candidates, recent-test snapshot window, normalized/Jaccard checks, embedding cosine checks, transactional pre-persistence gate | Candidate count and thresholds are server bounded; duplicate rejection uses stable `AI_DUPLICATE_REJECTED`. |
 | FR-24 | Strict output validation and bounded malformed-item retries | PARTIAL | strict JSON/schema/citation validator; truncation/error tests | Schema/citation/count failures are not automatically regenerated per item; retries cover selected transient provider failures. **MEDIUM.** Add explicit bounded policy without hidden paid retries. |
 | FR-25 | Manual test creation/selection | IMPLEMENTED | `TestsController/Service`; builder E2E | — |
 | FR-26 | Mixed manual and AI assembly | IMPLEMENTED | common Question/TestQuestion path | — |
@@ -116,7 +116,7 @@ No application code, migration, environment, database data, provider, payment sy
 | NFR-06 | Server-side secret manager | PARTIAL | env validation and ignored `.env` | No deployed secret-manager integration evidence. **HIGH operational.** Configure protected staging/production injection and rotation. |
 | NFR-07 | Secure uploads and DB constraints | IMPLEMENTED | validation/quarantine/scanner/limits/random keys/migrations/tests | — |
 | NFR-08 | Pre-score tenant isolation and IDOR denial | IMPLEMENTED | scoped queries/services and negative E2E | — |
-| NFR-09 | Prompt-input sanitization/injection corpus | PARTIAL | delimiters, instruction hierarchy, no tools, strict output | No substantial indirect-injection corpus or explicit free-text sanitizer. **HIGH.** Add normalization policy and adversarial tests. |
+| NFR-09 | Prompt-input sanitization/injection corpus | IMPLEMENTED | `PromptInputSanitizer`; NFKC/control cleanup; escaped evidence delimiters; instruction hierarchy; adversarial delimiter/script/system/tool corpus | Evidence remains explicitly untrusted and cannot terminate its labelled source block. |
 | NFR-10 | Graceful stable API errors | IMPLEMENTED | global exception filter/envelope and stable domain codes | — |
 | NFR-11 | Bounded backoff/recovery | IMPLEMENTED | bounded BullMQ attempts/exponential backoff, PostgreSQL leases, provider retry limits, reconciliation | Circuit-breaker/telemetry depth remains tracked under NFR-17. |
 | NFR-12 | Transactional quota under partial failure | IMPLEMENTED | reservations/settlement/ledger and concurrency E2E | — |
@@ -127,7 +127,7 @@ No application code, migration, environment, database data, provider, payment sy
 | NFR-17 | Circuit breakers and provider observability | NOT_IMPLEMENTED | timeouts/errors and token metadata only | No circuit breaker, metrics exporter, traces, or alert integration. **HIGH.** Add OpenTelemetry/metrics and provider health policy. |
 | NFR-18 | Shadow reindex/evaluation/atomic switch/rollback | PARTIAL | parallel embedding configs and completeness checks | No evaluation gate, active-index switch abstraction, or rollback command. **HIGH.** Implement version activation workflow. |
 | NFR-19 | Backup/recovery/retention | PARTIAL | documented pg_dump/object-storage procedure | No executed restore evidence, schedule, retention enforcement, or RPO/RTO. **HIGH operational.** Run staging restore drill. |
-| NFR-20 | Required security/quality/load test breadth | PARTIAL | 163 unit and 28 DB E2E tests, queue producer/processor tests, plus real AI acceptance | Missing live Redis replay/recovery, load, injection corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
+| NFR-20 | Required security/quality/load test breadth | PARTIAL | 172 unit and 29 DB E2E tests, queue producer/processor tests, adversarial prompt-input corpus, plus real AI acceptance | Missing live Redis replay/recovery, load, broader security corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
 
 ## 6. Authentication
 
@@ -143,7 +143,7 @@ Board → Class → Section and Class/Board → Subject → Chapter → Topic en
 
 ## 9. Question Bank
 
-All five types, validation, ownership, approval, archive, options, marks, explanations, difficulty, provenance, pagination and filters exist. Gaps: section filtering, indexed full-text search, embedding/history duplicate detection, and explicit school-shared publishing.
+All five types, validation, ownership, approval, archive, options, marks, explanations, difficulty, provenance, pagination, filters, and generation-time embedding/history duplicate prevention exist. Gaps: section filtering, indexed full-text search, and explicit school-shared publishing.
 
 ## 10. Knowledge Base
 
@@ -155,7 +155,7 @@ pgvector, the separate versioned `content_chunk_embeddings` table, dimension/mod
 
 ## 12. AI Generation
 
-Request validation, unit expansion, grounded prompts, provider abstraction, OpenRouter strict JSON Schema, token ceilings, explicit truncation, schema/citation validation, durable jobs, polling, regeneration, cancellation, quota settlement, BullMQ dispatch, and an independent worker exist. Request-level constraints, automatic invalid-item retry policy, embedding/recent-history duplicate checks, and event streaming are incomplete.
+Request validation, chapter-wide topic expansion, target/retrieval/repeat constraints, grounded and sanitized prompts, provider abstraction, OpenRouter strict JSON Schema, token ceilings, explicit truncation, schema/citation validation, durable jobs, polling/SSE progress, regeneration, cancellation, quota settlement, text/embedding/history duplicate checks, BullMQ dispatch, and an independent worker exist. Automatic invalid-item retry policy remains incomplete.
 
 ## 13. Test Builder
 
@@ -187,7 +187,7 @@ Only current subscription usage, KB coverage, job/retrieval status, billing tran
 
 ## 20. Security
 
-Implemented controls include Argon2, hashed/rotating tokens, status checks, global RBAC/JWT/validation/throttling, Helmet, explicit CORS, tenant predicates, upload quarantine/scanning, raw-body webhook signatures, encrypted notification template data, server-held provider keys, private local storage and safe provider errors. Gaps include operational TLS/secrets proof, dedicated signed URL design (downloads are API-authorized streams), systematic security-event audit coverage, adversarial prompt corpus, secret/log scanning automation, and circuit breakers.
+Implemented controls include Argon2, hashed/rotating tokens, status checks, global RBAC/JWT/validation/throttling, Helmet, explicit CORS, tenant predicates, upload quarantine/scanning, raw-body webhook signatures, encrypted notification template data, prompt-input normalization and escaped evidence delimiters, server-held provider keys, private local storage and safe provider errors. Gaps include operational TLS/secrets proof, dedicated signed URL design (downloads are API-authorized streams), systematic security-event audit coverage, secret/log scanning automation, and circuit breakers.
 
 ## 21. Non-Functional Requirements
 
@@ -265,8 +265,8 @@ Distinct feature gaps (overlapping requirements consolidated):
 
 1. **IMPLEMENTED — asynchronous workers:** BullMQ producers/processors, reconciliation, and independent entry points cover the four long-running domains.
 2. **HIGH — school administration/sharing:** no teacher-seat, school profile, shared curriculum/question-bank governance APIs.
-3. **HIGH — generation contract:** optional target/repeat/retrieval constraints incomplete.
-4. **HIGH — duplicate policy:** no embedding or recent-test-history comparison.
+3. **IMPLEMENTED — generation contract:** server validates and persists target/repeat/retrieval and all-topic constraints.
+4. **IMPLEMENTED — duplicate policy:** normalized text and embedding comparison covers the batch, owner bank, and configured recent-test window.
 5. **HIGH — test sections:** no section model/grouped instructions.
 6. **HIGH — billing lifecycle:** plan change/payment method and failed-cycle downgrade behavior incomplete.
 7. **HIGH — usage/reporting:** storage accounting and teacher/school/platform analytics absent.
@@ -311,12 +311,12 @@ Before production (but not before an isolated engineering staging deployment), p
 ## 29. Prioritized Remaining Work
 
 - **P0 — before representative staging:** deploy Redis and independent workers, validate live enqueue/consume/replay/shutdown behavior, and add process supervision/worker-staleness monitoring.
-- **P1 — during staging before production:** school/user administration and sharing; payment lifecycle/Safepay validation; monitoring/tracing; secrets/TLS; backup restore; adversarial tenant/prompt/load tests; production scanner/storage.
-- **P2 — after initial staging:** complete generation constraints/duplicate strategy, test sections, usage/reporting APIs, KB source issues/range mapping/evaluation rollback, full audit coverage, profile image.
+- **P1 — product completion before production:** school/user administration and sharing, usage/storage reporting, and PDF school branding; then payment lifecycle, monitoring/tracing, secrets/TLS, backup restore, adversarial tenant/load tests, and production scanner/storage.
+- **P2 — subsequent product batches:** test sections, usage/reporting APIs, KB source issues/range mapping/evaluation rollback, full audit coverage, and profile image.
 - **P3 — deferred/optional:** multiple versions, imports, advanced analytics/reranking, OCR/multimodal expansion, advanced branding and RTL fonts.
 
 ## 30. Final Verdict
 
 **D. BACKEND HAS MAJOR FEATURE GAPS**
 
-The core application services are unusually complete and well-tested, the real grounded AI path is proven, and asynchronous worker architecture now satisfies the defining nonblocking/scalability contract in code. However, SRS traceability—not module count—controls this verdict: school administration/sharing, reporting, test sections, full duplicate policy, and several operationally essential behaviors remain material. The next task should deploy and exercise the queue topology in representative staging before production readiness is claimed.
+The core application services are unusually complete and well-tested, the real grounded AI path is proven, and asynchronous worker architecture plus the complete guided-generation/duplicate/progress contract now satisfy the defining workflow in code. However, SRS traceability—not module count—controls this verdict: school administration/sharing, reporting, test sections, and several operationally essential behaviors remain material. The next product batch should complete school administration, shared-bank governance, usage/storage reporting, and PDF branding before infrastructure work resumes.

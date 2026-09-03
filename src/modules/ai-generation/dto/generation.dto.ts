@@ -3,9 +3,11 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsObject,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -13,6 +15,7 @@ import {
   Max,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { QuestionType } from '../../questions/enums/question.enums';
 import { GroundingMode } from '../generation.enums';
@@ -28,7 +31,10 @@ export class QuestionMixDto {
 }
 export class GenerationUnitDto {
   @IsUUID() chapterId!: string;
-  @IsUUID() topicId!: string;
+  @ValidateIf((value: GenerationUnitDto) => !value.allTopics)
+  @IsUUID()
+  topicId?: string;
+  @IsBoolean() @IsOptional() allTopics?: boolean;
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(5)
@@ -39,6 +45,8 @@ export class GenerationUnitDto {
 export class KnowledgeBaseGenerationDto {
   @IsEnum(GroundingMode) mode: GroundingMode = GroundingMode.REQUIRED;
   @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true }) @IsOptional() documentIds?: string[];
+  @Type(() => Number) @IsInt() @Min(1) @Max(50) @IsOptional() topK?: number;
+  @Type(() => Number) @IsNumber() @Min(0) @Max(1) @IsOptional() minSimilarity?: number;
 }
 export class CreateGenerationDto {
   @IsUUID() classId!: string;
@@ -57,4 +65,5 @@ export class CreateGenerationDto {
   knowledgeBase: KnowledgeBaseGenerationDto = new KnowledgeBaseGenerationDto();
   @IsInt() @Min(0) @Max(100) @IsOptional() avoidRepeatsFromLastNTests?: number;
   @IsInt() @Min(1) @Max(1440) @IsOptional() targetDurationMinutes?: number;
+  @Type(() => Number) @IsNumber() @Min(0.25) @Max(10000) @IsOptional() targetMarks?: number;
 }
