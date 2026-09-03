@@ -36,7 +36,9 @@ export class EmbeddingConfigService {
       distanceMetric,
       preprocessingVersion,
       configVersion: createHash('sha256').update(canonical).digest('hex'),
-      configured: provider === 'test' || (provider === 'openai' && Boolean(this.apiKey())),
+      configured:
+        provider === 'test' ||
+        (['openai', 'openrouter'].includes(provider) && Boolean(this.apiKey())),
     };
   }
   apiKey() {

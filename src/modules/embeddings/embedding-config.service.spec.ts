@@ -44,6 +44,20 @@ describe('Embedding foundation', () => {
     } satisfies Partial<EmbeddingProviderError>);
   });
 
+  it('recognizes a keyed OpenRouter embedding provider as configured', () => {
+    const service = new EmbeddingConfigService(
+      config({
+        embedding: {
+          provider: 'openrouter',
+          model: 'openai/text-embedding-3-small',
+          dimension: 1536,
+          apiKey: 'test-openrouter-key',
+        },
+      }),
+    );
+    expect(service.active()).toMatchObject({ provider: 'openrouter', configured: true });
+  });
+
   it('generates deterministic normalized vectors with the exact dimension', async () => {
     const service = new EmbeddingConfigService(
       config({ embedding: { provider: 'test', model: 'deterministic-test-v1', dimension: 1536 } }),

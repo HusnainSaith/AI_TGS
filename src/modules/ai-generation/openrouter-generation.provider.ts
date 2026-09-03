@@ -35,7 +35,9 @@ export class OpenRouterAiGenerationProvider implements AiGenerationProvider {
             { role: 'user', content: prompt.user },
           ],
           temperature: this.config.get<number>('aiGeneration.temperature') ?? 0.2,
-          max_completion_tokens: this.config.get<number>('aiGeneration.maxOutputTokens') ?? 4000,
+          // OpenRouter endpoint metadata currently advertises this normalized capability as
+          // max_tokens; require_parameters can reject routes when the alias is used instead.
+          max_tokens: this.config.get<number>('aiGeneration.maxOutputTokens') ?? 4000,
           response_format: {
             type: 'json_schema',
             json_schema: { name: 'grounded_questions', strict: true, schema: prompt.schema },

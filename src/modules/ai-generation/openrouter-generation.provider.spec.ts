@@ -11,7 +11,7 @@ describe('OpenRouterAiGenerationProvider', () => {
     schema: { type: 'object', properties: { questions: { type: 'array' } } },
   };
 
-  const provider = (timeoutMs = 1000) =>
+  const provider = (timeoutMs = 1000, baseUrl = 'https://openrouter.example/api/v1') =>
     new OpenRouterAiGenerationProvider(
       new ConfigService({
         aiGeneration: {
@@ -23,7 +23,7 @@ describe('OpenRouterAiGenerationProvider', () => {
         },
         openRouter: {
           apiKey: 'test-openrouter-key',
-          baseUrl: 'https://openrouter.example/api/v1',
+          baseUrl,
           httpReferer: 'https://app.example',
           appName: 'TGS',
         },
@@ -71,12 +71,29 @@ describe('OpenRouterAiGenerationProvider', () => {
       stream: false,
       reasoning: { exclude: true },
       provider: { require_parameters: true },
-      max_completion_tokens: 100,
+      max_tokens: 100,
     });
-    expect(request).not.toHaveProperty('max_tokens');
+    expect(request).not.toHaveProperty('max_completion_tokens');
     expect(
       (request.response_format as { json_schema: { schema: unknown } }).json_schema.schema,
     ).toEqual(prompt.schema);
+  });
+
+  it('normalizes a trailing base-URL slash without duplicating the API path', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ finish_reason: 'stop', message: { content: '{"questions":[]}' } }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const configured = provider(1000, 'https://openrouter.example/api/v1/');
+    await configured.generateQuestions(prompt);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://openrouter.example/api/v1/chat/completions',
+      expect.any(Object),
+    );
   });
 
   it.each([
