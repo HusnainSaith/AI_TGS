@@ -242,20 +242,93 @@ export class AiGenerationService {
         });
         return;
       }
-      const prompt = this.prompts.build(unit, meta.curriculum, meta.language, retrieval.evidence);
-      if (item.retryCount > 0)
-        prompt.user += `\nRegeneration variant: ${item.retryCount}. Produce a distinct valid question while remaining grounded.`;
-      const result = await this.invoke(prompt, item.id);
-      const generated = this.output.validate(
-        result.output,
-        unit,
-        new Set(retrieval.evidence.map((e) => e.label)),
-      );
+      const labels = new Set(retrieval.evidence.map((e) => e.label));
+      const generated = [] as ReturnType<GenerationOutputValidator['validate']>;
+      const usage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        requestCount: 0,
+        latencyMs: 0,
+      };
+      const maxRecovery = this.config.getOrThrow<number>('aiGeneration.maxItemRegenAttempts');
+      let invalidCodes: string[] = [];
+      for (let recoveryAttempt = 0; generated.length < unit.count; recoveryAttempt++) {
+        const [job] = await this.data.query(
+          `SELECT status,error_code FROM generation_jobs WHERE id=$1`,
+          [item.generationJobId],
+        );
+        if (!job || job.error_code === AiErrorCode.CANCELLED)
+          throw new BadRequestException(AiErrorCode.CANCELLED);
+        if (recoveryAttempt > maxRecovery)
+          throw new BadRequestException(invalidCodes[0] ?? AiErrorCode.SCHEMA_VALIDATION_FAILED);
+        const recoveryUnit = { ...unit, count: unit.count - generated.length };
+        const prompt = this.prompts.build(
+          recoveryUnit,
+          meta.curriculum,
+          meta.language,
+          retrieval.evidence,
+        );
+        if (item.retryCount > 0)
+          prompt.user += `\nRegeneration variant: ${item.retryCount}. Produce distinct valid wording while remaining grounded.`;
+        if (recoveryAttempt > 0)
+          prompt.user += `\nRecovery attempt ${recoveryAttempt}: replace exactly ${recoveryUnit.count} invalid or missing item(s). Validation failures: ${[...new Set(invalidCodes)].join(', ')}. Do not reproduce prior wording.`;
+        await this.items.update(
+          { id: item.id, processingToken: token },
+          {
+            requestMetadata: {
+              ...item.requestMetadata,
+              recovery: {
+                state: recoveryAttempt ? 'REGENERATING_INVALID_ITEMS' : 'VALIDATING_OUTPUT',
+                attempt: recoveryAttempt,
+                maxAttempts: maxRecovery,
+                acceptedCount: generated.length,
+                missingCount: recoveryUnit.count,
+                failureCodes: [...new Set(invalidCodes)],
+              },
+            },
+          },
+        );
+        const result =
+          recoveryAttempt === 0
+            ? await this.invoke(prompt, item.id)
+            : await this.provider.generateQuestions(prompt);
+        usage.inputTokens += result.usage?.inputTokens ?? 0;
+        usage.outputTokens += result.usage?.outputTokens ?? 0;
+        usage.totalTokens += result.usage?.totalTokens ?? 0;
+        usage.requestCount++;
+        usage.latencyMs += result.latencyMs;
+        try {
+          const recovered = this.output.validateRecoverable(result.output, recoveryUnit, labels);
+          invalidCodes = recovered.invalidCodes;
+          generated.push(...recovered.questions);
+        } catch (error) {
+          invalidCodes = [this.errorCode(error)];
+        }
+        if (!invalidCodes.length && generated.length < unit.count)
+          invalidCodes = [AiErrorCode.COUNT_MISMATCH];
+      }
       await this.duplicates.assertUnique(
         generated.map((question) => question.questionText),
         meta.curriculum.topicId,
         user,
         meta.avoidRepeatsFromLastNTests,
+      );
+      await this.items.update(
+        { id: item.id, processingToken: token },
+        {
+          requestMetadata: {
+            ...item.requestMetadata,
+            recovery: {
+              state: 'PERSISTING_VALID_ITEMS',
+              attempts: usage.requestCount - 1,
+              recovered: usage.requestCount > 1,
+              acceptedCount: generated.length,
+              missingCount: 0,
+              failureCodes: [...new Set(invalidCodes)],
+            },
+          },
+        },
       );
       const questions = await this.data.transaction(async (manager) => {
         const saved = [];
@@ -321,24 +394,27 @@ export class AiGenerationService {
         metadata: {
           generatedCount: questions.length,
           retrievalEventId: retrieval.retrievalEventId,
-          requestCount: 1,
-          latencyMs: result.latencyMs,
-          usage: result.usage,
+          requestCount: usage.requestCount,
+          recoveryAttempts: usage.requestCount - 1,
+          recovered: usage.requestCount > 1,
+          latencyMs: usage.latencyMs,
+          usage,
         },
       });
-      if (result.usage)
+      if (usage.requestCount)
         await this.data.query(
           `UPDATE generation_jobs SET token_usage=jsonb_build_object(
             'inputTokens',COALESCE((token_usage->>'inputTokens')::int,0)+$2,
             'outputTokens',COALESCE((token_usage->>'outputTokens')::int,0)+$3,
             'totalTokens',COALESCE((token_usage->>'totalTokens')::int,0)+$4,
-            'requestCount',COALESCE((token_usage->>'requestCount')::int,0)+1)
+            'requestCount',COALESCE((token_usage->>'requestCount')::int,0)+$5)
            WHERE id=$1`,
           [
             item.generationJobId,
-            result.usage.inputTokens ?? 0,
-            result.usage.outputTokens ?? 0,
-            result.usage.totalTokens ?? 0,
+            usage.inputTokens,
+            usage.outputTokens,
+            usage.totalTokens,
+            usage.requestCount,
           ],
         );
     } catch (error) {
@@ -526,7 +602,12 @@ export class AiGenerationService {
     return timer(0, 1000).pipe(
       concatMap(() => from(this.get(id, user))),
       takeWhile(
-        (job) => ![GenerationJobStatus.COMPLETED, GenerationJobStatus.FAILED].includes(job.status),
+        (job) =>
+          ![
+            GenerationJobStatus.COMPLETED,
+            GenerationJobStatus.PARTIAL,
+            GenerationJobStatus.FAILED,
+          ].includes(job.status),
         true,
       ),
       map((job) => ({ data: job })),

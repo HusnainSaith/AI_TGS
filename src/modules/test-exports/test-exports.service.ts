@@ -67,7 +67,7 @@ export class TestExportsService {
       const test = await this.lockTest(testId, user, manager);
       if (test.status !== TestStatus.FINALIZED)
         throw new BadRequestException(TestExportErrorCode.TEST_NOT_FINALIZED);
-      const renderVersion = this.config.get<string>('pdf.renderVersion') ?? 'test-pdf-v1';
+      const renderVersion = this.config.get<string>('pdf.renderVersion') ?? 'test-pdf-v2-sections';
       await manager.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [
         `${testId}:${dto.type}:${renderVersion}`,
       ]);

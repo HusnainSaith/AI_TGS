@@ -4,7 +4,7 @@
 
 This audit began at commit `92ecf6f66b7a66fb73bb029facf627f67a5689b6` and has been updated for the BullMQ worker implementation against the complete Master SRS v2.2. The implementation has a strong, tested core, including independently runnable asynchronous workers. The real OpenRouter/RAG path has also been manually accepted.
 
-Backend feature development is nevertheless not complete against the SRS. School-scoped sharing, current-cycle usage/storage reporting, and immutable complete PDF branding are now implemented. Substantial gaps remain in test sections, billing lifecycle behavior, source-issue workflows, OCR quality, observability, and operational recovery evidence.
+Backend feature development is nevertheless not complete against the SRS. First-class test sections and bounded malformed-item recovery are now implemented. Substantial gaps remain in billing lifecycle behavior, source-issue workflows, ingestion/OCR quality, observability, and operational recovery evidence.
 
 **Final verdict: D. BACKEND HAS MAJOR FEATURE GAPS.**
 
@@ -26,14 +26,14 @@ No application code, migration, environment, database data, provider, payment sy
 | Metric | Value |
 |---|---:|
 | TOTAL_BACKEND_REQUIREMENTS | 80 |
-| IMPLEMENTED | 56 |
-| PARTIAL | 21 |
+| IMPLEMENTED | 58 |
+| PARTIAL | 19 |
 | NOT_IMPLEMENTED | 1 |
 | DEFERRED | 2 |
 | NOT_APPLICABLE | 0 |
 | Actionable requirements | 78 |
-| Strict completion | 56 / 78 = **71.8%** |
-| Weighted completion | (56 + 0.5 × 21) / 78 = **85.3%** |
+| Strict completion | 58 / 78 = **74.4%** |
+| Weighted completion | (58 + 0.5 × 19) / 78 = **86.5%** |
 
 “Actionable” excludes DEFERRED and NOT_APPLICABLE. The weighted metric gives PARTIAL requirements half credit; it does not imply launch readiness.
 
@@ -66,10 +66,10 @@ No application code, migration, environment, database data, provider, payment sy
 | FR-21 | Poll/subscribe status and partial results | IMPLEMENTED | job/items/retrieval polling plus authenticated `GET /ai/jobs/:jobId/events` SSE stream | SSE reuses owner-scoped status reads and closes after terminal state. |
 | FR-22 | Per-question regeneration | IMPLEMENTED | regeneration endpoint/service, reservations, tests | — |
 | FR-23 | Exact + embedding duplicate checks across batch/bank/recent tests | IMPLEMENTED | owner/topic-scoped bank candidates, recent-test snapshot window, normalized/Jaccard checks, embedding cosine checks, transactional pre-persistence gate | Candidate count and thresholds are server bounded; duplicate rejection uses stable `AI_DUPLICATE_REJECTED`. |
-| FR-24 | Strict output validation and bounded malformed-item retries | PARTIAL | strict JSON/schema/citation validator; truncation/error tests | Schema/citation/count failures are not automatically regenerated per item; retries cover selected transient provider failures. **MEDIUM.** Add explicit bounded policy without hidden paid retries. |
+| FR-24 | Strict output validation and bounded malformed-item retries | IMPLEMENTED | recoverable per-item validator; missing-count recovery loop; bounded configuration; recovery metadata/tests | Valid items are retained in-memory, only missing logical slots are requested against the same evidence, and every candidate repeats schema/citation/duplicate validation before one transactional persistence. Exhaustion fails the item without additional quota reservation. |
 | FR-25 | Manual test creation/selection | IMPLEMENTED | `TestsController/Service`; builder E2E | — |
 | FR-26 | Mixed manual and AI assembly | IMPLEMENTED | common Question/TestQuestion path | — |
-| FR-27 | Named test sections with instructions/marks/order | PARTIAL | global test instructions, marks snapshots, ordering | No section entity/title/instructions or grouping on `test_questions`. **HIGH.** Model immutable ordered test sections. |
+| FR-27 | Named test sections with instructions/marks/order | IMPLEMENTED | `TestSection`; composite ownership FK; section CRUD/order/assignment; grouped preview/key/PDF; clone/finalization E2E | Default-section backfill preserves existing tests; section marks are derived from immutable question marks and finalized structure is mutation-protected. |
 | FR-28 | Reordering | IMPLEMENTED | `/tests/:id/questions/order`; transactional position logic | — |
 | FR-29 | Paper and answer-key preview | IMPLEMENTED | `/tests/:id/preview`, `/answer-key`; render-model tests | — |
 | FR-30 | Pre-finalization edit/add/remove/replace/order | IMPLEMENTED | test update/question mutation/refresh endpoints | — |
@@ -127,7 +127,7 @@ No application code, migration, environment, database data, provider, payment sy
 | NFR-17 | Circuit breakers and provider observability | NOT_IMPLEMENTED | timeouts/errors and token metadata only | No circuit breaker, metrics exporter, traces, or alert integration. **HIGH.** Add OpenTelemetry/metrics and provider health policy. |
 | NFR-18 | Shadow reindex/evaluation/atomic switch/rollback | PARTIAL | parallel embedding configs and completeness checks | No evaluation gate, active-index switch abstraction, or rollback command. **HIGH.** Implement version activation workflow. |
 | NFR-19 | Backup/recovery/retention | PARTIAL | documented pg_dump/object-storage procedure | No executed restore evidence, schedule, retention enforcement, or RPO/RTO. **HIGH operational.** Run staging restore drill. |
-| NFR-20 | Required security/quality/load test breadth | PARTIAL | 175 unit and 29 DB E2E tests, queue producer/processor tests, adversarial prompt-input corpus, plus real AI acceptance | Missing live Redis replay/recovery, load, broader security corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
+| NFR-20 | Required security/quality/load test breadth | PARTIAL | 176 unit and 29 DB E2E tests, queue producer/processor tests, adversarial prompt-input corpus, section lifecycle E2E, plus real AI acceptance | Missing live Redis replay/recovery, load, broader security corpus, signed-object, retrieval-quality regression, index rollback, and complete provider webhook acceptance suites. **HIGH.** Build staged test program. |
 
 ## 6. Authentication
 
@@ -155,7 +155,7 @@ pgvector, the separate versioned `content_chunk_embeddings` table, dimension/mod
 
 ## 12. AI Generation
 
-Request validation, chapter-wide topic expansion, target/retrieval/repeat constraints, grounded and sanitized prompts, provider abstraction, OpenRouter strict JSON Schema, token ceilings, explicit truncation, schema/citation validation, durable jobs, polling/SSE progress, regeneration, cancellation, quota settlement, text/embedding/history duplicate checks, BullMQ dispatch, and an independent worker exist. Automatic invalid-item retry policy remains incomplete.
+Request validation, chapter-wide topic expansion, grounded and sanitized prompts, strict schemas/citations, bounded malformed-item recovery, durable jobs, SSE progress, cancellation, exact quota settlement, duplicate checks, BullMQ dispatch, and an independent worker exist.
 
 ## 13. Test Builder
 
@@ -241,7 +241,7 @@ Notable SRS endpoint gaps: school/user administration, `/usage/me` alias, direct
 | Notifications | `notifications`, `notification_deliveries`, `notification_preferences` |
 | Audit | `audit_logs` |
 
-The model strongly supports current grounded-generation provenance and immutable test rendering. Missing data-model capabilities include test sections, school-shared question-bank governance, source-issue reports, reporting aggregates, provider configuration/prompt-template records, and explicit index activation/evaluation state. The SRS’s simplified inline chunk embedding was correctly normalized into `content_chunk_embeddings` to preserve versions.
+The model strongly supports current grounded-generation provenance, normalized test sections, school-shared governance, reporting, and immutable rendering. Missing data-model capabilities include source-issue reports, provider configuration/prompt-template records, and explicit index activation/evaluation state. The SRS’s simplified inline chunk embedding was correctly normalized into `content_chunk_embeddings` to preserve versions.
 
 ## 24. Test Coverage Matrix
 
@@ -267,13 +267,13 @@ Distinct feature gaps (overlapping requirements consolidated):
 2. **HIGH — school administration/sharing:** no teacher-seat, school profile, shared curriculum/question-bank governance APIs.
 3. **IMPLEMENTED — generation contract:** server validates and persists target/repeat/retrieval and all-topic constraints.
 4. **IMPLEMENTED — duplicate policy:** normalized text and embedding comparison covers the batch, owner bank, and configured recent-test window.
-5. **HIGH — test sections:** no section model/grouped instructions.
+5. **IMPLEMENTED — test sections:** normalized sections, membership, ordering, cloning, previews, and PDFs.
 6. **HIGH — billing lifecycle:** plan change/payment method and failed-cycle downgrade behavior incomplete.
 7. **HIGH — usage/reporting:** storage accounting and teacher/school/platform analytics absent.
 8. **HIGH — PDF branding/i18n:** incomplete school fields/logo/footer and no RTL/custom font support.
 9. **HIGH — OCR/extraction quality:** no active OCR provider and limited table/confidence behavior.
 10. **MEDIUM — question FTS/section filter.**
-11. **MEDIUM — invalid-item retry and progress streaming.**
+11. **IMPLEMENTED — bounded malformed-item recovery and progress metadata.**
 12. **MEDIUM — PREFERRED grounding governance.**
 13. **MEDIUM — KB range mapping, evaluation rollback and consolidated failure views.**
 14. **MEDIUM — teacher citation/source-issue controls.**
@@ -311,12 +311,12 @@ Before production (but not before an isolated engineering staging deployment), p
 ## 29. Prioritized Remaining Work
 
 - **P0 — before representative staging:** deploy Redis and independent workers, validate live enqueue/consume/replay/shutdown behavior, and add process supervision/worker-staleness monitoring.
-- **P1 — product completion before production:** test sections and bounded malformed-item retries; then ingestion/OCR completeness, payment lifecycle, monitoring/tracing, secrets/TLS, backup restore, adversarial tenant/load tests, and production scanner/storage.
-- **P2 — subsequent product batches:** test sections, usage/reporting APIs, KB source issues/range mapping/evaluation rollback, full audit coverage, and profile image.
+- **P1 — product completion before production:** ingestion/OCR completeness, then payment lifecycle, monitoring/tracing, secrets/TLS, backup restore, adversarial tenant/load tests, and production scanner/storage.
+- **P2 — subsequent product batches:** KB source issues/range mapping/evaluation rollback, full audit coverage, question search/filtering, and profile image.
 - **P3 — deferred/optional:** multiple versions, imports, advanced analytics/reranking, OCR/multimodal expansion, advanced branding and RTL fonts.
 
 ## 30. Final Verdict
 
 **D. BACKEND HAS MAJOR FEATURE GAPS**
 
-The core application services are unusually complete and well-tested, and school governance, reporting, and immutable PDF branding now satisfy this selected batch. However, SRS traceability—not module count—controls this verdict: test sections, ingestion/OCR completeness, billing lifecycle, and several operationally essential behaviors remain material. The next cohesive product batch should implement test sections and bounded malformed-item regeneration.
+The core application services are unusually complete and well-tested; first-class test sections and bounded malformed-item recovery now satisfy this selected batch. However, SRS traceability—not module count—controls this verdict: ingestion/OCR completeness, billing lifecycle, and several operationally essential behaviors remain material. The next cohesive HIGH batch should complete ingestion orchestration and OCR quality.

@@ -37,6 +37,13 @@ export interface TestRenderModel {
   };
   teacher: { displayName: string };
   questions: RenderQuestion[];
+  sections?: Array<{
+    title: string;
+    instructions: string | null;
+    position: number;
+    marks: number;
+    questions: RenderQuestion[];
+  }>;
 }
 export const PDF_RENDERER = Symbol('PDF_RENDERER');
 export interface PdfRenderer {

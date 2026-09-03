@@ -8,6 +8,12 @@ import { marksFor } from './question-marks';
 export class GenerationOutputValidator {
   constructor(private readonly validator: QuestionValidatorService) {}
   validate(output: string, unit: GenerationUnit, labels: Set<string>): ProviderQuestion[] {
+    const recovered = this.validateRecoverable(output, unit, labels);
+    if (recovered.invalidCodes.length || recovered.questions.length !== unit.count)
+      throw new BadRequestException(recovered.invalidCodes[0] ?? AiErrorCode.COUNT_MISMATCH);
+    return recovered.questions;
+  }
+  validateRecoverable(output: string, unit: GenerationUnit, labels: Set<string>) {
     let value: unknown;
     try {
       value = JSON.parse(output);
@@ -17,8 +23,23 @@ export class GenerationOutputValidator {
     const questions = (value as { questions?: unknown })?.questions;
     if (!Array.isArray(questions))
       throw new BadRequestException(AiErrorCode.SCHEMA_VALIDATION_FAILED);
-    if (questions.length !== unit.count) throw new BadRequestException(AiErrorCode.COUNT_MISMATCH);
-    return questions.map((raw) => this.question(raw, unit, labels));
+    const valid: ProviderQuestion[] = [],
+      invalidCodes: string[] = [];
+    for (const raw of questions.slice(0, unit.count)) {
+      try {
+        valid.push(this.question(raw, unit, labels));
+      } catch (error) {
+        invalidCodes.push(
+          error instanceof BadRequestException
+            ? error.message
+            : AiErrorCode.SCHEMA_VALIDATION_FAILED,
+        );
+      }
+    }
+    if (questions.length > unit.count) invalidCodes.push(AiErrorCode.COUNT_MISMATCH);
+    while (valid.length + invalidCodes.length < unit.count)
+      invalidCodes.push(AiErrorCode.COUNT_MISMATCH);
+    return { questions: valid, invalidCodes };
   }
   private question(raw: unknown, unit: GenerationUnit, labels: Set<string>): ProviderQuestion {
     const q = raw as Partial<ProviderQuestion>;

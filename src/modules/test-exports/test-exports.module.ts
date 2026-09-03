@@ -12,9 +12,10 @@ import { TestExportsService } from './test-exports.service';
 import { PDF_RENDERER } from './test-render-model';
 import { TestRenderModelService } from './test-render-model.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TestSection } from '../tests/entities/test-section.entity';
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TestExport, ExamTest, TestQuestion]),
+    TypeOrmModule.forFeature([TestExport, ExamTest, TestQuestion, TestSection]),
     StorageModule,
     AuditModule,
     SubscriptionsModule,

@@ -12,6 +12,8 @@ import { TestSnapshotService } from './test-snapshot.service';
 import { TestsController } from './tests.controller';
 import { TestsService } from './tests.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TestSection } from './entities/test-section.entity';
+import { TestSectionsService } from './test-sections.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -23,13 +25,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
       CurriculumClass,
       Section,
       Subject,
+      TestSection,
     ]),
     AuditModule,
     SubscriptionsModule,
     NotificationsModule,
   ],
   controllers: [TestsController],
-  providers: [TestsService, TestSnapshotService],
+  providers: [TestsService, TestSnapshotService, TestSectionsService],
   exports: [TestsService],
 })
 export class TestsModule {}

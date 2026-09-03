@@ -35,6 +35,7 @@ export class AddQuestionDto {
   @IsUUID() questionId!: string;
   @IsOptional() @IsInt() @Min(1) position?: number;
   @IsOptional() @Min(0.25) @Max(100) marks?: number;
+  @IsOptional() @IsUUID() testSectionId?: string;
 }
 export class BulkAddQuestionsDto {
   @IsArray() @ArrayMinSize(1) @IsUUID('4', { each: true }) questionIds!: string[];
@@ -42,6 +43,7 @@ export class BulkAddQuestionsDto {
 export class OrderItemDto {
   @IsUUID() testQuestionId!: string;
   @IsInt() @Min(1) position!: number;
+  @IsOptional() @IsUUID() testSectionId?: string;
 }
 export class ReorderQuestionsDto {
   @IsArray()
@@ -49,6 +51,30 @@ export class ReorderQuestionsDto {
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
   items!: OrderItemDto[];
+}
+export class CreateTestSectionDto {
+  @IsString() @Length(1, 160) title!: string;
+  @IsOptional() @IsString() @Length(0, 5000) instructions?: string;
+  @IsOptional() @IsInt() @Min(1) position?: number;
+}
+export class UpdateTestSectionDto {
+  @IsOptional() @IsString() @Length(1, 160) title?: string;
+  @IsOptional() @IsString() @Length(0, 5000) instructions?: string;
+}
+export class TestSectionOrderItemDto {
+  @IsUUID() sectionId!: string;
+  @IsInt() @Min(1) position!: number;
+}
+export class ReorderTestSectionsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => TestSectionOrderItemDto)
+  items!: TestSectionOrderItemDto[];
+}
+export class AssignQuestionSectionDto {
+  @IsUUID() testSectionId!: string;
+  @IsOptional() @IsInt() @Min(1) position?: number;
 }
 export class ListTestsDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;

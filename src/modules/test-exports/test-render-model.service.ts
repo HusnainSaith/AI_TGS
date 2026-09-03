@@ -12,6 +12,7 @@ import { ExamTest } from '../tests/entities/test.entity';
 import { TestStatus } from '../tests/test.enums';
 import { TestRenderMode } from './test-export.enums';
 import { RenderQuestion, TestRenderModel } from './test-render-model';
+import { TestSection } from '../tests/entities/test-section.entity';
 import {
   OBJECT_STORAGE_PROVIDER,
   ObjectStorageProvider,
@@ -21,6 +22,7 @@ export class TestRenderModelService {
   constructor(
     @InjectRepository(ExamTest) private tests: Repository<ExamTest>,
     @InjectRepository(TestQuestion) private questions: Repository<TestQuestion>,
+    @Optional() @InjectRepository(TestSection) private sections?: Repository<TestSection>,
     @Optional() @Inject(OBJECT_STORAGE_PROVIDER) private storage?: ObjectStorageProvider,
   ) {}
   async build(testId: string, mode: TestRenderMode): Promise<TestRenderModel> {
@@ -38,6 +40,9 @@ export class TestRenderModelService {
     if (test.status !== TestStatus.FINALIZED || !test.finalizedAt)
       throw new BadRequestException('TEST_NOT_FINALIZED');
     const snapshots = await this.questions.find({ where: { testId }, order: { position: 'ASC' } });
+    const sections = this.sections
+      ? await this.sections.find({ where: { testId }, order: { position: 'ASC' } })
+      : [];
     if (snapshots.length !== test.totalQuestions)
       throw new BadRequestException('Finalized Test snapshot is inconsistent');
     const branding = (test.brandingSnapshot ?? {}) as Record<string, string | null>;
@@ -82,6 +87,19 @@ export class TestRenderModelService {
       },
       teacher: { displayName: test.creator.name },
       questions: snapshots.map((q) => this.question(q, mode)),
+      sections: sections.map((section) => {
+        const members = snapshots
+          .filter((q) => q.testSectionId === section.id)
+          .sort((a, b) => a.position - b.position)
+          .map((q) => this.question(q, mode));
+        return {
+          title: section.title,
+          instructions: section.instructions,
+          position: section.position,
+          marks: members.reduce((sum, q) => sum + q.marks, 0),
+          questions: members,
+        };
+      }),
     };
   }
   private question(q: TestQuestion, mode: TestRenderMode): RenderQuestion {

@@ -86,6 +86,7 @@ export const envSchema = Joi.object({
   AI_MAX_OUTPUT_TOKENS: Joi.number().integer().min(100).max(16384).default(4000),
   AI_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(60000),
   AI_MAX_RETRIES: Joi.number().integer().min(0).max(3).default(1),
+  AI_MAX_ITEM_REGEN_ATTEMPTS: Joi.number().integer().min(0).max(3).default(2),
   AI_MAX_QUESTIONS_PER_REQUEST: Joi.number().integer().min(1).max(500).default(100),
   AI_PROMPT_STRATEGY_VERSION: Joi.string().min(1).max(64).default('grounded-question-v1'),
   AI_STALE_MINUTES: Joi.number().integer().min(1).max(1440).default(15),
@@ -93,7 +94,7 @@ export const envSchema = Joi.object({
   AI_DUPLICATE_EMBEDDING_THRESHOLD: Joi.number().min(0.5).max(1).default(0.92),
   AI_DUPLICATE_CANDIDATE_LIMIT: Joi.number().integer().min(1).max(5000).default(500),
   USAGE_RESERVATION_TTL_MINUTES: Joi.number().integer().min(1).max(10080).default(30),
-  PDF_RENDER_VERSION: Joi.string().min(1).max(64).default('test-pdf-v1'),
+  PDF_RENDER_VERSION: Joi.string().min(1).max(64).default('test-pdf-v2-sections'),
   PDF_MAX_FILE_SIZE_BYTES: Joi.number().integer().min(1024).max(52428800).default(10485760),
   PDF_MAX_QUESTIONS: Joi.number().integer().min(1).max(2000).default(500),
   TEST_EXPORT_STORAGE_PREFIX: Joi.string()

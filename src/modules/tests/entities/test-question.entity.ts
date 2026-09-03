@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ExamTest } from './test.entity';
+import { TestSection } from './test-section.entity';
 import { Question } from '../../questions/entities/question.entity';
 import {
   GroundingStatus,
@@ -31,7 +32,7 @@ export interface CitationSnapshot {
   citationOrder: number;
 }
 @Entity('test_questions')
-@Index(['testId', 'position'], { unique: true })
+@Index(['testSectionId', 'position'], { unique: true })
 @Index(['testId', 'sourceQuestionId'], { unique: true })
 @Check('position>0')
 @Check('marks_snapshot>0')
@@ -41,6 +42,10 @@ export class TestQuestion {
   @ManyToOne(() => ExamTest, (t) => t.questions, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'test_id' })
   test!: ExamTest;
+  @Column({ name: 'test_section_id', type: 'uuid' }) testSectionId!: string;
+  @ManyToOne(() => TestSection, (section) => section.questions, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'test_section_id' })
+  section!: TestSection;
   @Column({ name: 'source_question_id', type: 'uuid' }) sourceQuestionId!: string;
   @ManyToOne(() => Question, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'source_question_id' })

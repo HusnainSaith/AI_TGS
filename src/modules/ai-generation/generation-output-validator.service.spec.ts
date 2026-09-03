@@ -48,4 +48,13 @@ describe('GenerationOutputValidator strict JSON boundary', () => {
       ),
     ).toThrow('AI_SCHEMA_VALIDATION_FAILED');
   });
+  it('retains valid items and classifies malformed logical slots for targeted recovery', () => {
+    const result = validator.validateRecoverable(
+      JSON.stringify({ questions: [JSON.parse(valid).questions[0], { questionText: 'bad' }] }),
+      { ...unit, count: 2 },
+      new Set(['SRC_1']),
+    );
+    expect(result.questions).toHaveLength(1);
+    expect(result.invalidCodes).toEqual(['AI_SCHEMA_VALIDATION_FAILED']);
+  });
 });

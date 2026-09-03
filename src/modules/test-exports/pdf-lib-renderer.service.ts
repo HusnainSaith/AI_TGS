@@ -109,31 +109,50 @@ export class PdfLibRenderer implements PdfRenderer {
       }
     }
     y -= 10;
-    for (const q of model.questions) {
-      ensure(45);
-      text(
-        `${q.number}. ${q.text}  [${q.marks} mark${q.marks === 1 ? '' : 's'}]`,
-        margin,
-        11,
-        bold,
-      );
-      for (const option of q.options) text(`   ${option.label}. ${option.text}`, margin + 10, 10);
-      if (model.mode === TestRenderMode.ANSWER_KEY) {
-        text(`   Correct answer: ${q.answer ?? 'Answer unavailable'}`, margin + 10, 10, bold);
-        if (q.explanation) text(`   Explanation: ${q.explanation}`, margin + 10, 9);
-      } else if (!q.options.length) {
-        text(
-          '   ______________________________________________________________________',
-          margin,
-          9,
-        );
-        text(
-          '   ______________________________________________________________________',
-          margin,
-          9,
-        );
+    const groups = model.sections?.length
+      ? model.sections
+      : [
+          {
+            title: '',
+            instructions: null,
+            position: 1,
+            marks: model.test.totalMarks,
+            questions: model.questions,
+          },
+        ];
+    for (const section of groups) {
+      if (section.title) {
+        ensure(35);
+        text(`${section.title} (${section.marks} marks)`, margin, 13, bold);
+        if (section.instructions) text(section.instructions, margin, 9);
+        y -= 4;
       }
-      y -= 7;
+      for (const q of section.questions) {
+        ensure(45);
+        text(
+          `${q.number}. ${q.text}  [${q.marks} mark${q.marks === 1 ? '' : 's'}]`,
+          margin,
+          11,
+          bold,
+        );
+        for (const option of q.options) text(`   ${option.label}. ${option.text}`, margin + 10, 10);
+        if (model.mode === TestRenderMode.ANSWER_KEY) {
+          text(`   Correct answer: ${q.answer ?? 'Answer unavailable'}`, margin + 10, 10, bold);
+          if (q.explanation) text(`   Explanation: ${q.explanation}`, margin + 10, 9);
+        } else if (!q.options.length) {
+          text(
+            '   ______________________________________________________________________',
+            margin,
+            9,
+          );
+          text(
+            '   ______________________________________________________________________',
+            margin,
+            9,
+          );
+        }
+        y -= 7;
+      }
     }
     const pages = doc.getPages();
     pages.forEach((p, index) => {

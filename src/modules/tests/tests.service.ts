@@ -30,6 +30,7 @@ import {
 } from './dto/test.dto';
 import { ExamTest } from './entities/test.entity';
 import { TestQuestion } from './entities/test-question.entity';
+import { TestSection } from './entities/test-section.entity';
 import { TestSnapshotService } from './test-snapshot.service';
 import { TestStatus } from './test.enums';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -67,6 +68,9 @@ export class TestsService {
         archivedAt: null,
         brandingSnapshot: null,
       });
+      await m
+        .getRepository(TestSection)
+        .save({ testId: saved.id, title: 'Questions', instructions: null, position: 1 });
       await this.audit.record(
         {
           actorId: user.id,
@@ -109,12 +113,26 @@ export class TestsService {
   async get(id: string, user: AuthenticatedUser) {
     const t = await this.scoped(id, user);
     const qs = await this.testQuestions.find({ where: { testId: id }, order: { position: 'ASC' } });
-    return this.detail(t, qs, false);
+    return this.detail(
+      t,
+      qs,
+      false,
+      await this.data
+        .getRepository(TestSection)
+        .find({ where: { testId: id }, order: { position: 'ASC' } }),
+    );
   }
   async preview(id: string, user: AuthenticatedUser) {
     const t = await this.scoped(id, user);
     const qs = await this.testQuestions.find({ where: { testId: id }, order: { position: 'ASC' } });
-    return this.detail(t, qs, true);
+    return this.detail(
+      t,
+      qs,
+      true,
+      await this.data
+        .getRepository(TestSection)
+        .find({ where: { testId: id }, order: { position: 'ASC' } }),
+    );
   }
   async answerKey(id: string, user: AuthenticatedUser) {
     const t = await this.scoped(id, user);
@@ -125,6 +143,9 @@ export class TestsService {
       entityType: 'test',
       entityId: id,
     });
+    const sections = await this.data
+      .getRepository(TestSection)
+      .find({ where: { testId: id }, order: { position: 'ASC' } });
     return {
       id: t.id,
       title: t.title,
@@ -134,6 +155,21 @@ export class TestsService {
         answer: q.answerSnapshot,
         marks: q.marksSnapshot,
         explanation: q.explanationSnapshot,
+      })),
+      sections: sections.map((section) => ({
+        ...section,
+        marks: qs
+          .filter((q) => q.testSectionId === section.id)
+          .reduce((sum, q) => sum + Number(q.marksSnapshot), 0),
+        questions: qs
+          .filter((q) => q.testSectionId === section.id)
+          .map((q) => ({
+            position: q.position,
+            type: q.type,
+            answer: q.answerSnapshot,
+            marks: q.marksSnapshot,
+            explanation: q.explanationSnapshot,
+          })),
       })),
     };
   }
@@ -185,15 +221,24 @@ export class TestsService {
         .getRepository(TestQuestion)
         .findBy({ testId: id, sourceQuestionId: In(ids) });
       if (existing.length) throw new ConflictException('Question already exists in Test');
-      let position = await m.getRepository(TestQuestion).countBy({ testId: id });
       for (const input of items) {
         const q = questions.find((x) => x.id === input.questionId)!;
         this.eligible(q, t, user, false);
         const snapshot = await this.snapshots.fromQuestion(q, t.language, m, input.marks);
-        position++;
-        await m
-          .getRepository(TestQuestion)
-          .save({ ...snapshot, testId: id, position: input.position ?? position });
+        const section = input.testSectionId
+          ? await m.getRepository(TestSection).findOneBy({ id: input.testSectionId, testId: id })
+          : await m
+              .getRepository(TestSection)
+              .findOne({ where: { testId: id }, order: { position: 'ASC' } });
+        if (!section) throw new BadRequestException('Test Section not found');
+        const position =
+          (await m.getRepository(TestQuestion).countBy({ testSectionId: section.id })) + 1;
+        await m.getRepository(TestQuestion).save({
+          ...snapshot,
+          testId: id,
+          testSectionId: section.id,
+          position: input.position ?? position,
+        });
       }
       await this.normalize(id, m);
       await this.audit.record(
@@ -214,20 +259,42 @@ export class TestsService {
       const t = await this.lock(id, user, m);
       this.draft(t);
       const current = await m.getRepository(TestQuestion).findBy({ testId: id });
+      const sections = await m.getRepository(TestSection).findBy({ testId: id });
+      const targets = dto.items.map((item) => ({
+        ...item,
+        testSectionId:
+          item.testSectionId ?? current.find((q) => q.id === item.testQuestionId)?.testSectionId,
+      }));
+      const groups = new Map<string, number[]>();
+      for (const item of targets)
+        if (item.testSectionId)
+          groups.set(item.testSectionId, [
+            ...(groups.get(item.testSectionId) ?? []),
+            item.position,
+          ]);
       if (
         current.length !== dto.items.length ||
-        new Set(dto.items.map((i) => i.position)).size !== current.length ||
         new Set(dto.items.map((i) => i.testQuestionId)).size !== current.length ||
-        dto.items.some((i) => !current.some((q) => q.id === i.testQuestionId))
+        targets.some(
+          (i) =>
+            !current.some((q) => q.id === i.testQuestionId) ||
+            !sections.some((s) => s.id === i.testSectionId),
+        ) ||
+        [...groups.values()].some(
+          (positions) =>
+            new Set(positions).size !== positions.length ||
+            positions.some(
+              (position, index) => [...positions].sort((a, b) => a - b)[index] !== index + 1,
+            ),
+        )
       )
         throw new BadRequestException('A full unique reorder is required');
       await m.query(`UPDATE test_questions SET position=position+1000000 WHERE test_id=$1`, [id]);
-      for (const i of dto.items)
-        await m.query(`UPDATE test_questions SET position=$2 WHERE id=$1 AND test_id=$3`, [
-          i.testQuestionId,
-          i.position,
-          id,
-        ]);
+      for (const i of targets)
+        await m.query(
+          `UPDATE test_questions SET position=$2,test_section_id=$4 WHERE id=$1 AND test_id=$3`,
+          [i.testQuestionId, i.position, id, i.testSectionId],
+        );
       await this.totals(id, m);
       await this.audit.record(
         { actorId: user.id, action: 'test.question.reorder', entityType: 'test', entityId: id },
@@ -279,8 +346,18 @@ export class TestsService {
         .getRepository(TestQuestion)
         .find({ where: { testId: id }, order: { position: 'ASC' } });
       if (!qs.length) throw new BadRequestException('A Test requires at least one Question');
-      if (qs.some((q, i) => q.position !== i + 1))
-        throw new BadRequestException('Test Question positions must be contiguous');
+      const sections = await m
+        .getRepository(TestSection)
+        .find({ where: { testId: id }, order: { position: 'ASC' } });
+      if (!sections.length || sections.some((section, i) => section.position !== i + 1))
+        throw new BadRequestException('Test Section positions must be contiguous');
+      for (const section of sections) {
+        const members = qs
+          .filter((q) => q.testSectionId === section.id)
+          .sort((a, b) => a.position - b.position);
+        if (members.some((q, i) => q.position !== i + 1))
+          throw new BadRequestException('Section Question positions must be contiguous');
+      }
       const sources = await m
         .getRepository(Question)
         .findBy({ id: In(qs.map((q) => q.sourceQuestionId)) });
@@ -363,10 +440,24 @@ export class TestsService {
         archivedAt: null,
         brandingSnapshot: null,
       });
+      const sourceSections = await m
+        .getRepository(TestSection)
+        .find({ where: { testId: id }, order: { position: 'ASC' } });
+      const sectionIds = new Map<string, string>();
+      for (const section of sourceSections) {
+        const cloned = await m.getRepository(TestSection).save({
+          testId: copy.id,
+          title: section.title,
+          instructions: section.instructions,
+          position: section.position,
+        });
+        sectionIds.set(section.id, cloned.id);
+      }
       const qs = await m.getRepository(TestQuestion).findBy({ testId: id });
       await m.getRepository(TestQuestion).save(
         qs.map((q) => ({
           testId: copy.id,
+          testSectionId: sectionIds.get(q.testSectionId)!,
           sourceQuestionId: q.sourceQuestionId,
           position: q.position,
           type: q.type,
@@ -478,8 +569,12 @@ export class TestsService {
       .getRepository(TestQuestion)
       .find({ where: { testId: id }, order: { position: 'ASC', createdAt: 'ASC' } });
     await m.query(`UPDATE test_questions SET position=position+1000000 WHERE test_id=$1`, [id]);
-    for (const [index, question] of qs.entries())
-      await m.query(`UPDATE test_questions SET position=$2 WHERE id=$1`, [question.id, index + 1]);
+    const counters = new Map<string, number>();
+    for (const question of qs) {
+      const position = (counters.get(question.testSectionId) ?? 0) + 1;
+      counters.set(question.testSectionId, position);
+      await m.query(`UPDATE test_questions SET position=$2 WHERE id=$1`, [question.id, position]);
+    }
     await this.totals(id, m);
   }
   private async totals(id: string, m: EntityManager) {
@@ -514,9 +609,12 @@ export class TestsService {
     const questions = await manager
       .getRepository(TestQuestion)
       .find({ where: { testId: id }, order: { position: 'ASC' } });
-    return this.detail(test, questions, false);
+    const sections = await manager
+      .getRepository(TestSection)
+      .find({ where: { testId: id }, order: { position: 'ASC' } });
+    return this.detail(test, questions, false, sections);
   }
-  private detail(t: ExamTest, qs: TestQuestion[], paper: boolean) {
+  private detail(t: ExamTest, qs: TestQuestion[], paper: boolean, sections: TestSection[] = []) {
     const typeSummary = qs.reduce<Record<string, number>>(
       (a, q) => ((a[q.type] = (a[q.type] ?? 0) + 1), a),
       {},
@@ -548,6 +646,38 @@ export class TestsService {
               reviewStatus: q.reviewStatusSnapshot,
               citations: q.citationSnapshot,
             }),
+      })),
+      sections: sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        instructions: section.instructions,
+        position: section.position,
+        marks: qs
+          .filter((q) => q.testSectionId === section.id)
+          .reduce((sum, q) => sum + Number(q.marksSnapshot), 0),
+        questions: qs
+          .filter((q) => q.testSectionId === section.id)
+          .map((q) => ({
+            id: q.id,
+            sourceQuestionId: q.sourceQuestionId,
+            position: q.position,
+            type: q.type,
+            questionText: q.questionTextSnapshot,
+            marks: q.marksSnapshot,
+            difficulty: q.difficultySnapshot,
+            options:
+              q.optionsSnapshot?.map((o) =>
+                paper ? { optionText: o.optionText, optionOrder: o.optionOrder } : o,
+              ) ?? null,
+            ...(paper
+              ? {}
+              : {
+                  source: q.sourceSnapshot,
+                  groundingStatus: q.groundingStatusSnapshot,
+                  reviewStatus: q.reviewStatusSnapshot,
+                  citations: q.citationSnapshot,
+                }),
+          })),
       })),
     };
   }

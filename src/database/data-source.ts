@@ -35,6 +35,7 @@ import { UsageReservation } from '../modules/subscriptions/entities/usage-reserv
 import { UsageLedger } from '../modules/subscriptions/entities/usage-ledger.entity';
 import { ExamTest } from '../modules/tests/entities/test.entity';
 import { TestQuestion } from '../modules/tests/entities/test-question.entity';
+import { TestSection } from '../modules/tests/entities/test-section.entity';
 import { TestExport } from '../modules/test-exports/entities/test-export.entity';
 import {
   BillingCheckoutSession,
@@ -91,6 +92,7 @@ export default new DataSource({
     UsageLedger,
     ExamTest,
     TestQuestion,
+    TestSection,
     TestExport,
     PlanProviderPrice,
     BillingCustomer,

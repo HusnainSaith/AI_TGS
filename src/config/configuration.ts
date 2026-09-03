@@ -110,6 +110,7 @@ export const configuration = () => ({
     maxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS ?? 4000),
     timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 60000),
     maxRetries: Number(process.env.AI_MAX_RETRIES ?? 1),
+    maxItemRegenAttempts: Number(process.env.AI_MAX_ITEM_REGEN_ATTEMPTS ?? 2),
     maxQuestionsPerRequest: Number(process.env.AI_MAX_QUESTIONS_PER_REQUEST ?? 100),
     promptStrategyVersion: process.env.AI_PROMPT_STRATEGY_VERSION ?? 'grounded-question-v1',
     staleMinutes: Number(process.env.AI_STALE_MINUTES ?? 15),
@@ -158,7 +159,7 @@ export const configuration = () => ({
   },
   pdf: {
     renderer: 'pdf-lib',
-    renderVersion: process.env.PDF_RENDER_VERSION ?? 'test-pdf-v1',
+    renderVersion: process.env.PDF_RENDER_VERSION ?? 'test-pdf-v2-sections',
     maxFileSizeBytes: Number(process.env.PDF_MAX_FILE_SIZE_BYTES ?? 10485760),
     maxQuestions: Number(process.env.PDF_MAX_QUESTIONS ?? 500),
     storagePrefix: process.env.TEST_EXPORT_STORAGE_PREFIX ?? 'test-exports',

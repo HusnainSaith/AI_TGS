@@ -43,12 +43,14 @@ import { TestExportsModule } from '../src/modules/test-exports/test-exports.modu
 import { TestExportsService } from '../src/modules/test-exports/test-exports.service';
 import { TestsModule } from '../src/modules/tests/tests.module';
 import { TestsService } from '../src/modules/tests/tests.service';
+import { TestSectionsService } from '../src/modules/tests/test-sections.service';
 import { User } from '../src/modules/users/user.entity';
 const run = process.env.RUN_DB_TESTS === 'true' ? describe : describe.skip;
 run('Persisted Test Builder with PostgreSQL (e2e)', () => {
   let app: INestApplication,
     db: DataSource,
     tests: TestsService,
+    sections: TestSectionsService,
     exports: TestExportsService,
     storage: ObjectStorageProvider;
   const id = {
@@ -87,6 +89,7 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
     await app.init();
     db = app.get(DataSource);
     tests = app.get(TestsService);
+    sections = app.get(TestSectionsService);
     exports = app.get(TestExportsService);
     storage = app.get(OBJECT_STORAGE_PROVIDER);
     const passwordHash = await hash(randomUUID());
@@ -190,6 +193,10 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
         `DELETE FROM test_questions WHERE test_id IN (SELECT id FROM tests WHERE created_by=$1)`,
         [id.teacher],
       );
+      await db.query(
+        `DELETE FROM test_sections WHERE test_id IN (SELECT id FROM tests WHERE created_by=$1)`,
+        [id.teacher],
+      );
       await db.query(`DELETE FROM tests WHERE created_by=$1`, [id.teacher]);
       await db.getRepository(QuestionOption).delete({ questionId: In([id.q1, id.q2]) });
       await db.getRepository(Question).delete([id.q1, id.q2]);
@@ -211,12 +218,37 @@ run('Persisted Test Builder with PostgreSQL (e2e)', () => {
     );
     expect(draft.status).toBe('DRAFT');
     await tests.add(draft.id, { questionId: id.q1 }, teacher);
+    const section = await sections.create(
+      draft.id,
+      { title: 'Section A', instructions: 'Attempt every question.' },
+      teacher,
+    );
+    const current = await tests.get(draft.id, teacher);
+    await sections.assign(
+      draft.id,
+      current.questions[0]!.id,
+      { testSectionId: section.id },
+      teacher,
+    );
     await expect(tests.get(draft.id, other)).rejects.toThrow('permission');
     const before = await tests.preview(draft.id, teacher);
+    expect(before.sections[1]).toMatchObject({
+      title: 'Section A',
+      instructions: 'Attempt every question.',
+      marks: 2,
+    });
     expect(before.questions[0]!.options![1]).not.toHaveProperty('isCorrect');
     const final = await tests.finalize(draft.id, teacher);
     expect(final).toMatchObject({ status: 'FINALIZED', totalQuestions: 1, totalMarks: 2 });
     await tests.finalize(draft.id, teacher);
+    await expect(
+      sections.update(draft.id, section.id, { title: 'Changed' }, teacher),
+    ).rejects.toThrow('DRAFT');
+    const clone = await tests.clone(draft.id, teacher);
+    expect(clone.sections.map((value: { title: string }) => value.title)).toEqual([
+      'Questions',
+      'Section A',
+    ]);
     await db
       .getRepository(QuestionOption)
       .update({ questionId: id.q1, optionOrder: 2 }, { isCorrect: false });

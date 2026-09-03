@@ -14,6 +14,7 @@ import { School } from '../../schools/school.entity';
 import { CurriculumClass, Section, Subject } from '../../curriculum/curriculum.entities';
 import { TestStatus } from '../test.enums';
 import { TestQuestion } from './test-question.entity';
+import { TestSection } from './test-section.entity';
 @Entity('tests')
 @Index(['createdBy'])
 @Index(['status'])
@@ -68,4 +69,5 @@ export class ExamTest extends BaseEntity {
   @Column({ name: 'finalized_at', type: 'timestamptz', nullable: true }) finalizedAt!: Date | null;
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true }) archivedAt!: Date | null;
   @OneToMany(() => TestQuestion, (q) => q.test) questions!: TestQuestion[];
+  @OneToMany(() => TestSection, (section) => section.test) sections!: TestSection[];
 }
