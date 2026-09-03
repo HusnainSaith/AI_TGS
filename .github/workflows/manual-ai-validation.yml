@@ -1,0 +1,71 @@
+name: Manual AI validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      validation_level:
+        description: Validation level
+        required: true
+        type: choice
+        options: [metadata, connectivity, full]
+      allow_paid_ai_calls:
+        description: Acknowledge paid provider calls
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: real-ai-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    environment: staging
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      VALIDATION_ENV: ci-manual
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      AI_PROVIDER: openrouter
+      AI_MODEL: google/gemini-3.8-flash
+      EMBEDDING_PROVIDER: openrouter
+      EMBEDDING_MODEL: openai/text-embedding-3-small
+      DATABASE_HOST: ${{ secrets.VALIDATION_DATABASE_HOST }}
+      DATABASE_PORT: ${{ secrets.VALIDATION_DATABASE_PORT }}
+      DATABASE_NAME: ${{ secrets.VALIDATION_DATABASE_NAME }}
+      DATABASE_USER: ${{ secrets.VALIDATION_DATABASE_USER }}
+      DATABASE_PASSWORD: ${{ secrets.VALIDATION_DATABASE_PASSWORD }}
+      DATABASE_SSL: true
+      JWT_ACCESS_SECRET: ${{ secrets.VALIDATION_JWT_ACCESS_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.VALIDATION_JWT_REFRESH_SECRET }}
+      MALWARE_SCANNER_PROVIDER: windows_defender
+      WINDOWS_DEFENDER_MPCMDRUN_PATH: C:\Program Files\Windows Defender\MpCmdRun.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Reject missing paid-call acknowledgement
+        if: inputs.validation_level != 'metadata' && !inputs.allow_paid_ai_calls
+        shell: pwsh
+        run: throw 'Paid validation requires allow_paid_ai_calls=true'
+      - name: Validate metadata
+        if: inputs.validation_level == 'metadata'
+        run: npm run validate:openrouter:metadata
+      - name: Validate connectivity
+        if: inputs.validation_level == 'connectivity' && inputs.allow_paid_ai_calls
+        shell: pwsh
+        run: |
+          $env:RUN_REAL_AI_VALIDATION='true'
+          npm run validate:openrouter:connectivity
+      - name: Validate full pipeline
+        if: inputs.validation_level == 'full' && inputs.allow_paid_ai_calls
+        shell: pwsh
+        run: |
+          if (-not $env:DATABASE_HOST) { throw 'Dedicated staging validation database secrets are required' }
+          $env:RUN_REAL_AI_VALIDATION='true'
+          $env:ALLOW_PAID_AI_CALLS='true'
+          npm run validate:ai:pipeline

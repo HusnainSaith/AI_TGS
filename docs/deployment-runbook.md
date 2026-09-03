@@ -85,6 +85,37 @@ Set `FRONTEND_URL` and every comma-separated `CORS_ORIGINS` entry to the exact H
 - OCR: OCR-required PDFs remain unpublishable until a real OCR provider is configured.
 - Safepay: keep disabled until sandbox/live checkout, webhook, cancellation, and reconciliation validation is explicitly scheduled.
 
+## Opt-in AI validation
+
+Real-provider validation is never part of test, E2E, build, lint, install, push, or pull-request workflows. Three manual levels are available:
+
+- `npm run validate:openrouter:metadata` checks the configured key, model catalog, endpoint availability, and parameter support without inference.
+- `npm run validate:openrouter:connectivity` makes at most one tiny generation call and one tiny embedding call.
+- `npm run validate:ai:pipeline` runs the controlled application path through malware scanning, ingestion, embeddings, publication, retrieval, grounded generation, quota, Test Builder, PDF, and persistent notifications. It bounds generation calls to two and embedding operations to eight.
+
+PowerShell connectivity invocation:
+
+```powershell
+$env:VALIDATION_ENV="local"
+$env:RUN_REAL_AI_VALIDATION="true"
+npm run validate:openrouter:connectivity
+```
+
+The complete pipeline needs a migrated PostgreSQL/pgvector validation database, configured object storage and a real malware scanner. On local Windows it may use the configured Windows Defender provider. Linux and other environments must provide their own supported real scanner; the harness never substitutes a clean result. Run it explicitly with both acknowledgements:
+
+```powershell
+$env:VALIDATION_ENV="local"
+$env:RUN_REAL_AI_VALIDATION="true"
+$env:ALLOW_PAID_AI_CALLS="true"
+npm run validate:ai:pipeline
+```
+
+Missing guards, invalid environments, failed checks, unavailable scanners, or exceeded call limits return a non-zero exit code before further calls. Output is one sanitized JSON result: it includes safe models, statuses, counts, timings, identifiers, quota deltas, and acceptance flags, but excludes credentials, headers, prompts, provider bodies, vectors, and document content.
+
+Each full run uses UUID-tagged controlled records. They are retained because audit, citation, question, and test history is intentionally immutable; the harness does not risk deleting unrelated data. Periodic removal, if required, must use a separately reviewed retention process scoped to these validation identifiers.
+
+The manual GitHub workflow uses the protected `staging` environment, serial concurrency, a 30-minute timeout, and an explicit paid-call input. It references `OPENROUTER_API_KEY`, `VALIDATION_DATABASE_*`, and `VALIDATION_JWT_*` secrets. Full CI validation remains unavailable until a dedicated non-production PostgreSQL/pgvector database and real scanner configuration are supplied. No output artifact is uploaded. SMTP is optional because persistent notifications are checked; Safepay is outside this validation scope.
+
 ## Health, monitoring, and logs
 
 - `GET /api/v1/health/live` is dependency-free liveness.
