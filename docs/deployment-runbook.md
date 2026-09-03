@@ -78,7 +78,7 @@ Set `FRONTEND_URL` and every comma-separated `CORS_ORIGINS` entry to the exact H
 
 ## Provider readiness
 
-- AI generation: set `AI_PROVIDER=openai` only when `AI_MODEL` is supported by the OpenAI Responses endpoint used by the adapter and the matching key is supplied through `AI_API_KEY` or `OPENAI_API_KEY`.
+- AI generation: select a supported `AI_PROVIDER` and explicit `AI_MODEL`, then supply its key. `AI_MAX_OUTPUT_TOKENS` is a server-controlled completion ceiling (default 4,000; allowed 100-16,384); size it for the configured question count and schema, and monitor `AI_OUTPUT_TRUNCATED` rather than retrying paid calls automatically.
 - Embeddings: set `EMBEDDING_PROVIDER=openai`, `EMBEDDING_MODEL=text-embedding-3-small`, and provide `OPENAI_API_KEY` or `EMBEDDING_API_KEY`. Expected dimension is 1,536 with cosine distance.
 - SMTP: set the SMTP host, port, security mode, sender, and optional credentials. Port 465 requires implicit TLS. Validate without sending mail using `npm run smtp:verify`.
 - Malware: configure a real scanner. Publication must remain blocked unless the immutable version records a CLEAN result.

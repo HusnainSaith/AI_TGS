@@ -70,6 +70,9 @@ describe('environment validation', () => {
     const base = { JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) };
     expect(envSchema.validate({ ...base, AI_MAX_QUESTIONS_PER_REQUEST: 0 }).error).toBeDefined();
     expect(envSchema.validate({ ...base, AI_MAX_RETRIES: 4 }).error).toBeDefined();
+    for (const invalid of [0, -1, 1.5, 'not-a-number', 16385])
+      expect(envSchema.validate({ ...base, AI_MAX_OUTPUT_TOKENS: invalid }).error).toBeDefined();
+    expect(envSchema.validate({ ...base, AI_MAX_OUTPUT_TOKENS: 4000 }).error).toBeUndefined();
     expect(
       envSchema.validate({
         ...base,

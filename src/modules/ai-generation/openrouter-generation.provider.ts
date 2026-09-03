@@ -12,7 +12,7 @@ import {
 } from './generation.contracts';
 
 interface ChatResponse {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{ finish_reason?: string | null; message?: { content?: string } }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
@@ -35,16 +35,25 @@ export class OpenRouterAiGenerationProvider implements AiGenerationProvider {
             { role: 'user', content: prompt.user },
           ],
           temperature: this.config.get<number>('aiGeneration.temperature') ?? 0.2,
-          max_tokens: this.config.get<number>('aiGeneration.maxOutputTokens') ?? 4000,
+          max_completion_tokens: this.config.get<number>('aiGeneration.maxOutputTokens') ?? 4000,
           response_format: {
             type: 'json_schema',
             json_schema: { name: 'grounded_questions', strict: true, schema: prompt.schema },
           },
+          stream: false,
+          reasoning: { exclude: true },
           provider: { require_parameters: true },
         })) as ChatResponse;
-        const output = response.choices?.[0]?.message?.content;
+        const choice = response.choices?.[0];
+        if (choice?.finish_reason === 'length') throw new Error(AiErrorCode.OUTPUT_TRUNCATED);
+        const output = choice?.message?.content;
         if (typeof output !== 'string' || !output.trim())
           throw new Error(AiErrorCode.INVALID_RESPONSE);
+        try {
+          JSON.parse(output);
+        } catch {
+          throw new Error(AiErrorCode.INVALID_RESPONSE);
+        }
         return {
           output,
           latencyMs: Date.now() - started,

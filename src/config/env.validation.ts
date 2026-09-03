@@ -64,7 +64,7 @@ export const envSchema = Joi.object({
   AI_MODEL: Joi.string().allow('').default(''),
   AI_API_KEY: Joi.string().allow('').default(''),
   AI_TEMPERATURE: Joi.number().min(0).max(2).default(0.2),
-  AI_MAX_OUTPUT_TOKENS: Joi.number().integer().min(100).max(100000).default(4000),
+  AI_MAX_OUTPUT_TOKENS: Joi.number().integer().min(100).max(16384).default(4000),
   AI_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(60000),
   AI_MAX_RETRIES: Joi.number().integer().min(0).max(3).default(1),
   AI_MAX_QUESTIONS_PER_REQUEST: Joi.number().integer().min(1).max(500).default(100),

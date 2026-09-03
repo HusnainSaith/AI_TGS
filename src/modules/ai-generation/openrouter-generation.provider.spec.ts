@@ -42,7 +42,7 @@ describe('OpenRouterAiGenerationProvider', () => {
     fetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
-          choices: [{ message: { content: '{"questions":[]}' } }],
+          choices: [{ finish_reason: 'stop', message: { content: '{"questions":[]}' } }],
           usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -68,8 +68,15 @@ describe('OpenRouterAiGenerationProvider', () => {
     expect(request).toMatchObject({
       model: 'google/gemini-3.8-flash',
       response_format: { type: 'json_schema', json_schema: { strict: true } },
+      stream: false,
+      reasoning: { exclude: true },
       provider: { require_parameters: true },
+      max_completion_tokens: 100,
     });
+    expect(request).not.toHaveProperty('max_tokens');
+    expect(
+      (request.response_format as { json_schema: { schema: unknown } }).json_schema.schema,
+    ).toEqual(prompt.schema);
   });
 
   it.each([
@@ -89,6 +96,34 @@ describe('OpenRouterAiGenerationProvider', () => {
       AiErrorCode.INVALID_RESPONSE,
     );
   });
+
+  it.each(['{bad', '{"questions":[]}'])(
+    'classifies finish_reason=length as truncated before parsing content',
+    async (content) => {
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ finish_reason: 'length', message: { content } }] }),
+          { status: 200 },
+        ),
+      );
+      await expect(provider().generateQuestions(prompt)).rejects.toThrow(
+        AiErrorCode.OUTPUT_TRUNCATED,
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['Here is the result: {"questions":[]}', '```json\n{"questions":[]}\n```', '{bad'])(
+    'rejects non-pure JSON content without repair',
+    async (content) => {
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 }),
+      );
+      await expect(provider().generateQuestions(prompt)).rejects.toThrow(
+        AiErrorCode.INVALID_RESPONSE,
+      );
+    },
+  );
 
   it('maps an aborted request to timeout', async () => {
     fetchMock.mockImplementation((_url: string, init: RequestInit) => {
