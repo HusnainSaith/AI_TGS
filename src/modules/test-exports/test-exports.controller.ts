@@ -28,7 +28,7 @@ export class TestExportsController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') key?: string,
   ) {
-    return this.exports.create(testId, dto, user, key);
+    return this.exports.createAndDispatch(testId, dto, user, key);
   }
   @Get() list(
     @Param('testId', ParseUUIDPipe) testId: string,

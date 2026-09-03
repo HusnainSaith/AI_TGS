@@ -158,3 +158,38 @@ Before traffic:
 5. Confirm logs contain no secrets and dashboards/alerts receive safe failure events.
 
 For rollback, stop new instances gracefully and redeploy the previous immutable application artifact. Prefer forward database fixes: do not automatically revert a migration after new code has written data. If a release includes a backward-incompatible schema change, use a separately reviewed expand/migrate/contract plan. Restore from backup only for corruption/data-loss recovery, never as a routine application rollback.
+# Asynchronous queue and worker deployment
+
+Long-running ingestion, embedding, AI generation, and PDF export work uses PostgreSQL as the authoritative state store and BullMQ/Redis only as an at-least-once dispatch transport.
+
+```text
+HTTP API -> PostgreSQL durable job -> BullMQ producer -> Redis
+                                                     -> independent worker
+                                                     -> existing domain service
+                                                     -> PostgreSQL final state
+```
+
+Set `QUEUES_ENABLED=true` in deployed API and worker environments. Configure either `REDIS_URL` or the `REDIS_HOST`, `REDIS_PORT`, `REDIS_USERNAME`, `REDIS_PASSWORD`, `REDIS_TLS`, and `REDIS_DB` fields. Redis must be private, authenticated, and TLS-protected when traffic crosses a trusted-host boundary. Inject credentials through the deployment secret store; never place them in source control or logs.
+
+Run workers independently so they can scale and restart without the HTTP API:
+
+```powershell
+npm run worker:ingestion
+npm run worker:embeddings
+npm run worker:ai-generation
+npm run worker:pdf
+```
+
+`npm run worker:all` is intended for local development or small controlled deployments. AI concurrency defaults to 1; ingestion, embedding, and PDF default to 2. Override only after capacity and provider-limit testing.
+
+Each queue payload is exactly `{ jobId: UUID }`. Workers reload user, tenant, request, evidence, vector, and export state from PostgreSQL. Deterministic BullMQ job IDs make repeated dispatch safe. PostgreSQL processing tokens and leases remain the business-level duplicate barrier; BullMQ locks are not treated as authoritative.
+
+If enqueue fails after a database commit, the API returns the durable job with `dispatch.dispatched=false`. A periodic reconciliation pass scans only pending/queued or expired-lease records and retries deterministic dispatch. Completed, archived, and cancelled work is not re-enqueued. Existing `/process` endpoints remain recovery/debug compatibility paths and are not the normal production route.
+
+Retries are bounded (`QUEUE_ATTEMPTS`, default 3) with exponential backoff (`QUEUE_BACKOFF_MS`, default 1000 ms). Domain validation and terminal failure state remain inside existing services; provider-specific retries and quota settlement retain their existing limits. Never multiply provider retry limits casually with BullMQ attempts.
+
+Nest application contexts install `SIGINT`/`SIGTERM` shutdown hooks. BullMQ stops accepting new jobs and closes workers during application-context shutdown; orchestration should allow at least `WORKER_SHUTDOWN_TIMEOUT_MS` before forcible termination. Expired PostgreSQL leases make interrupted jobs recoverable.
+
+`GET /api/v1/health/live` is process liveness. `GET /api/v1/health` is readiness: when queues are enabled it reports Redis separately and degrades readiness if Redis is unreachable. A worker heartbeat registry is not currently persisted, so worker-staleness detection must be supplied by process supervision and BullMQ monitoring.
+
+Normal unit tests and builds use `QUEUES_ENABLED=false` and do not require Redis. Real Redis integration is opt-in with `RUN_REDIS_TESTS=true`; do not claim it passed unless a live Redis instance was used.

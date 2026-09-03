@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -35,6 +36,7 @@ import { PDF_RENDERER, PdfRenderer } from './test-render-model';
 import { TestRenderModelService } from './test-render-model.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
+import { PdfExportQueueProducer } from '../../infrastructure/queue/queue-producers.service';
 
 @Injectable()
 export class TestExportsService {
@@ -50,6 +52,7 @@ export class TestExportsService {
     private entitlement: EntitlementService,
     private usage: UsageService,
     private audit: AuditService,
+    @Optional() private queue?: PdfExportQueueProducer,
     private notifications?: NotificationsService,
   ) {}
 
@@ -58,6 +61,7 @@ export class TestExportsService {
     dto: CreateTestExportDto,
     user: AuthenticatedUser,
     idempotencyKey?: string,
+    processInline = true,
   ) {
     const prepared = await this.data.transaction(async (manager) => {
       const test = await this.lockTest(testId, user, manager);
@@ -136,8 +140,25 @@ export class TestExportsService {
       );
       return { export: entity, process: true };
     });
-    if (!prepared.process) return this.safe(prepared.export);
+    if (!prepared.process || !processInline) return this.safe(prepared.export);
     return this.process(prepared.export.id, user);
+  }
+
+  async createAndDispatch(
+    testId: string,
+    dto: CreateTestExportDto,
+    user: AuthenticatedUser,
+    idempotencyKey?: string,
+  ) {
+    const result = await this.create(testId, dto, user, idempotencyKey, false);
+    if (result.status !== TestExportStatus.PENDING) return result;
+    const dispatch = await this.queue
+      ?.dispatch(result.id)
+      .catch(() => ({ dispatched: false, queue: 'pdf-exports', bullJobId: null }));
+    return {
+      ...result,
+      dispatch: dispatch ?? { dispatched: false, queue: 'pdf-exports', bullJobId: null },
+    };
   }
 
   async process(exportId: string, user: AuthenticatedUser) {

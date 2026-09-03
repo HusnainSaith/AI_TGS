@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +14,7 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { FileValidationService } from '../../infrastructure/file-security/file-validation.service';
+import { IngestionQueueProducer } from '../../infrastructure/queue/queue-producers.service';
 import {
   OBJECT_STORAGE_PROVIDER,
   ObjectStorageProvider,
@@ -53,6 +55,7 @@ export class KnowledgeBaseService {
     private readonly audit: AuditService,
     private readonly validation: FileValidationService,
     private readonly config: ConfigService,
+    @Optional() private readonly ingestionQueue: IngestionQueueProducer | undefined,
     @Inject(OBJECT_STORAGE_PROVIDER) private readonly storage: ObjectStorageProvider,
   ) {}
   private visible(qb: SelectQueryBuilder<KnowledgeDocument>, user: AuthenticatedUser) {
@@ -260,7 +263,7 @@ export class KnowledgeBaseService {
     const key = `quarantine/${tenant}/${randomUUID()}`;
     await this.storage.putObject(key, file.buffer, valid.mimeType);
     try {
-      return await this.data.transaction(async (manager) => {
+      const result = await this.data.transaction(async (manager) => {
         await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [id]);
         if (
           await manager
@@ -321,6 +324,13 @@ export class KnowledgeBaseService {
         );
         return { version: this.versionResponse(version), ingestionJob: job };
       });
+      const dispatch = await this.ingestionQueue
+        ?.dispatch(result.ingestionJob.id)
+        .catch(() => ({ dispatched: false, queue: 'kb-ingestion', bullJobId: null }));
+      return {
+        ...result,
+        dispatch: dispatch ?? { dispatched: false, queue: 'kb-ingestion', bullJobId: null },
+      };
     } catch (error) {
       await this.storage.deleteObject(key).catch(() => undefined);
       throw error;

@@ -25,7 +25,26 @@ export const envSchema = Joi.object({
   DATABASE_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().port().default(6379),
+  REDIS_URL: Joi.string()
+    .uri({ scheme: ['redis', 'rediss'] })
+    .allow('')
+    .default(''),
+  REDIS_USERNAME: Joi.string().allow('').default(''),
   REDIS_PASSWORD: Joi.string().allow('').default(''),
+  REDIS_TLS: Joi.boolean().truthy('true').falsy('false').default(false),
+  REDIS_DB: Joi.number().integer().min(0).max(15).default(0),
+  QUEUES_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  QUEUE_PREFIX: Joi.string()
+    .pattern(/^[a-zA-Z0-9_-]+$/)
+    .default('tgs'),
+  QUEUE_ATTEMPTS: Joi.number().integer().min(1).max(10).default(3),
+  QUEUE_BACKOFF_MS: Joi.number().integer().min(100).max(60000).default(1000),
+  QUEUE_RECONCILIATION_INTERVAL_MS: Joi.number().integer().min(5000).max(3600000).default(30000),
+  WORKER_SHUTDOWN_TIMEOUT_MS: Joi.number().integer().min(1000).max(300000).default(30000),
+  WORKER_INGESTION_CONCURRENCY: Joi.number().integer().min(1).max(32).default(2),
+  WORKER_EMBEDDING_CONCURRENCY: Joi.number().integer().min(1).max(32).default(2),
+  WORKER_AI_GENERATION_CONCURRENCY: Joi.number().integer().min(1).max(8).default(1),
+  WORKER_PDF_CONCURRENCY: Joi.number().integer().min(1).max(32).default(2),
   STORAGE_PROVIDER: Joi.string().valid('local').default('local'),
   STORAGE_LOCAL_ROOT: Joi.string().min(1).default('./storage'),
   KB_MAX_FILE_SIZE_MB: Joi.number().positive().max(100).default(20),
@@ -147,6 +166,10 @@ export const envSchema = Joi.object({
   if (value.APP_ENV === 'production' && value.KB_ALLOW_UNSCANNED_PROCESSING === true)
     return helpers.error('any.invalid', {
       message: 'Production cannot allow unscanned ingestion processing',
+    });
+  if (value.APP_ENV === 'production' && value.QUEUES_ENABLED !== true)
+    return helpers.error('any.invalid', {
+      message: 'Production requires QUEUES_ENABLED=true for asynchronous workloads',
     });
   if (value.APP_ENV === 'production' && value.EMBEDDING_PROVIDER === 'test')
     return helpers.error('any.invalid', {

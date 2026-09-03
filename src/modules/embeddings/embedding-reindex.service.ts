@@ -6,6 +6,6 @@ import { EmbeddingService } from './embedding.service';
 export class EmbeddingReindexService {
   constructor(private readonly embeddings: EmbeddingService) {}
   reindex(versionId: string, user: AuthenticatedUser) {
-    return this.embeddings.createAndProcess(versionId, user, true);
+    return this.embeddings.createAndDispatch(versionId, user, true);
   }
 }

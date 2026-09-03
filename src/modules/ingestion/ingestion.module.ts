@@ -40,6 +40,6 @@ import { MalwareScanningService } from './malware-scanning.service';
     CompletenessVerifierService,
     MalwareScanningService,
   ],
-  exports: [IngestionProcessorService, MalwareScanningService],
+  exports: [IngestionService, IngestionProcessorService, MalwareScanningService],
 })
 export class IngestionModule {}

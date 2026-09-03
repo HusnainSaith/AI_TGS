@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,7 @@ import {
   EmbeddingProvider,
 } from '../../infrastructure/providers/provider.contracts';
 import { AuditService } from '../audit/audit.service';
+import { EmbeddingQueueProducer } from '../../infrastructure/queue/queue-producers.service';
 import { ContentChunk } from '../knowledge-base/entities/content-chunk.entity';
 import { DocumentVersion } from '../knowledge-base/entities/document-version.entity';
 import {
@@ -41,6 +43,7 @@ export class EmbeddingService {
     private readonly config: EmbeddingConfigService,
     private readonly data: DataSource,
     private readonly audit: AuditService,
+    @Optional() private readonly queue?: EmbeddingQueueProducer,
   ) {}
 
   private async version(id: string, user: AuthenticatedUser, mutate: boolean) {
@@ -95,6 +98,22 @@ export class EmbeddingService {
   }
 
   async createAndProcess(versionId: string, user: AuthenticatedUser, reindex = false) {
+    const job = await this.createJob(versionId, user, reindex);
+    return this.process(job.id, user.id);
+  }
+
+  async createAndDispatch(versionId: string, user: AuthenticatedUser, reindex = false) {
+    const job = await this.createJob(versionId, user, reindex);
+    const dispatch = await this.queue
+      ?.dispatch(job.id)
+      .catch(() => ({ dispatched: false, queue: 'embeddings', bullJobId: null }));
+    return {
+      ...this.jobResponse(job),
+      dispatch: dispatch ?? { dispatched: false, queue: 'embeddings', bullJobId: null },
+    };
+  }
+
+  private async createJob(versionId: string, user: AuthenticatedUser, reindex = false) {
     const version = await this.version(versionId, user, true);
     const chunks = await this.chunks.find({
       where: { documentVersionId: versionId },
@@ -103,7 +122,7 @@ export class EmbeddingService {
     this.assertEligible(version, chunks.length);
     const active = this.config.active();
     if (!active.configured) throw new ConflictException(EmbeddingErrorCode.PROVIDER_NOT_CONFIGURED);
-    const job = await this.data.transaction(async (manager) => {
+    return this.data.transaction(async (manager) => {
       if (reindex)
         await manager.query(
           `UPDATE content_chunk_embeddings e SET status='STALE', updated_at=now() FROM content_chunks c
@@ -133,7 +152,6 @@ export class EmbeddingService {
       );
       return saved;
     });
-    return this.process(job.id, user.id);
   }
 
   async process(jobId: string, actorId?: string) {
@@ -363,6 +381,42 @@ export class EmbeddingService {
       metadata: { retryCount: job.retryCount + 1 },
     });
     return this.process(jobId, user.id);
+  }
+
+  async retryAndDispatch(jobId: string, user: AuthenticatedUser) {
+    const job = await this.prepareRetry(jobId, user);
+    const dispatch = await this.queue
+      ?.dispatch(jobId)
+      .catch(() => ({ dispatched: false, queue: 'embeddings', bullJobId: null }));
+    return {
+      ...this.jobResponse(job),
+      dispatch: dispatch ?? { dispatched: false, queue: 'embeddings', bullJobId: null },
+    };
+  }
+
+  private async prepareRetry(jobId: string, user: AuthenticatedUser) {
+    const job = await this.jobs.findOne({
+      where: { id: jobId },
+      relations: { documentVersion: { document: true } },
+    });
+    if (!job) throw new NotFoundException('Embedding Job not found');
+    await this.version(job.documentVersionId, user, true);
+    if (![EmbeddingJobStatus.FAILED, EmbeddingJobStatus.PARTIAL].includes(job.status))
+      throw new ConflictException('Only failed or partial embedding jobs may be retried');
+    if (job.retryCount >= 3) throw new ConflictException('Maximum embedding retry count reached');
+    await this.jobs.update(jobId, {
+      status: EmbeddingJobStatus.QUEUED,
+      retryCount: job.retryCount + 1,
+      errorCode: null,
+    });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'kb.embedding.retry',
+      entityType: 'embedding_job',
+      entityId: jobId,
+      metadata: { retryCount: job.retryCount + 1 },
+    });
+    return this.jobs.findOneByOrFail({ id: jobId });
   }
 
   private jobResponse(job: EmbeddingJob) {

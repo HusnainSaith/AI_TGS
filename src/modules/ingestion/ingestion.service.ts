@@ -3,12 +3,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { AuditService } from '../audit/audit.service';
+import { IngestionQueueProducer } from '../../infrastructure/queue/queue-producers.service';
 import { KnowledgeDocumentStatus, TenantScope } from '../knowledge-base/enums/knowledge-base.enums';
 import { IngestionJob } from './entities/ingestion-job.entity';
 import { IngestionJobStatus, IngestionStep } from './enums/ingestion.enums';
@@ -18,6 +20,7 @@ export class IngestionService {
     @InjectRepository(IngestionJob) private readonly jobs: Repository<IngestionJob>,
     private readonly data: DataSource,
     private readonly audit: AuditService,
+    @Optional() private readonly queue?: IngestionQueueProducer,
   ) {}
   private query(id: string, user: AuthenticatedUser) {
     const qb = this.jobs
@@ -104,7 +107,14 @@ export class IngestionService {
         manager,
       );
     });
-    return this.find(id, user);
+    const result = await this.find(id, user);
+    const dispatch = await this.queue
+      ?.dispatch(id)
+      .catch(() => ({ dispatched: false, queue: 'kb-ingestion', bullJobId: null }));
+    return {
+      ...result,
+      dispatch: dispatch ?? { dispatched: false, queue: 'kb-ingestion', bullJobId: null },
+    };
   }
   async authorizeProcessing(id: string, user: AuthenticatedUser) {
     const job = await this.query(id, user).getOne();

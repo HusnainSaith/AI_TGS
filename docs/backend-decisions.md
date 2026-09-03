@@ -145,3 +145,10 @@ Migration execution is dependency-ordered rather than simply core-first: core mi
 - Upload byte limits are supplemented by extracted-character, PDF-page, and chunk limits. Processing leases are renewed at ingestion phase boundaries. DOCX parsing remains in-process, so OS/container memory and CPU limits are still required as defense in depth against decompression/parser abuse.
 - Production startup rejects wildcard/non-HTTPS CORS origins, non-HTTPS frontend links, missing SMTP, missing email encryption key, deterministic providers, and unsafe malware bypass. PostgreSQL pool size and connection/idle timeouts are bounded and configurable.
 - SIGTERM/SIGINT hooks stop polling, wait up to five seconds for an active notification cycle, close the SMTP pool, and let Nest close database resources. Processing leases provide crash recovery where exact external side-effect atomicity is impossible.
+# BullMQ transport with PostgreSQL authority
+
+The API commits durable job/business state to PostgreSQL before attempting queue dispatch. BullMQ carries only a UUID and provides at-least-once transport; it does not replace durable status, leases, quota records, generated questions, embeddings, citations, or PDF metadata.
+
+No transactional outbox table was added. The existing status and lease columns are sufficient for the smallest safe design: a failed post-commit enqueue leaves a recoverable queued record, and an idempotent reconciliation dispatcher republishes eligible records using deterministic BullMQ job IDs. This avoids a schema migration while closing the lost-job side of the database/Redis dual write.
+
+Queue consumers live only in explicit worker application contexts. The HTTP `AppModule` registers producers and reconciliation but no processors, preventing every API replica from becoming a worker.

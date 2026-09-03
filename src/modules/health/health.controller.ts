@@ -1,12 +1,18 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { DurableJobPayload, QUEUES } from '../../infrastructure/queue/queue.constants';
 import { Public } from '../../common/decorators/public.decorator';
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    @Optional()
+    @InjectQueue(QUEUES.AI_GENERATION)
+    private readonly queue?: Queue<DurableJobPayload>,
   ) {}
   @Public() @Get('live') live() {
     return { status: 'ok', application: 'up', timestamp: new Date().toISOString() };
@@ -27,10 +33,25 @@ export class HealthController {
     } catch {
       database = 'down';
     }
+    const queuesEnabled = this.config.get<boolean>('queue.enabled') ?? false;
+    let redis: 'up' | 'down' | 'disabled' = queuesEnabled ? 'down' : 'disabled';
+    if (queuesEnabled && this.queue) {
+      try {
+        await Promise.race([
+          this.queue.getJobCounts('wait', 'active', 'failed'),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+        ]);
+        redis = 'up';
+      } catch {
+        redis = 'down';
+      }
+    }
     return {
-      status: database === 'up' ? 'ok' : 'degraded',
+      status: database === 'up' && (!queuesEnabled || redis === 'up') ? 'ok' : 'degraded',
       application: 'up',
       database,
+      redis,
+      queues: { enabled: queuesEnabled, status: redis },
       pgvector,
       embeddingProvider: {
         provider: this.config.get<string>('embedding.provider') ?? null,

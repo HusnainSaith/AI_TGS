@@ -26,7 +26,7 @@ export class EmbeddingsController {
       'Uses the server-controlled active provider/model. Requires CLEAN malware status and completed extraction. Vectors are never returned.',
   })
   embed(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.embeddings.createAndProcess(id, user);
+    return this.embeddings.createAndDispatch(id, user);
   }
 
   @Get('document-versions/:id/embeddings')
@@ -49,6 +49,6 @@ export class EmbeddingsController {
   @Roles(UserRole.SYSTEM_ADMIN, UserRole.SCHOOL_ADMIN)
   @ApiOperation({ summary: 'Retry only failed work in a FAILED or PARTIAL embedding job' })
   retry(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.embeddings.retry(id, user);
+    return this.embeddings.retryAndDispatch(id, user);
   }
 }

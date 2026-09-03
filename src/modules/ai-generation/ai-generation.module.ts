@@ -50,5 +50,6 @@ export function createAiGenerationProvider(config: ConfigService) {
       useFactory: createAiGenerationProvider,
     },
   ],
+  exports: [AiGenerationService],
 })
 export class AiGenerationModule {}

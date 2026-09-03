@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -40,6 +41,7 @@ import { GenerationUnitExpander } from './generation-unit-expander.service';
 import { GroundedPromptBuilder } from './grounded-prompt-builder.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
+import { AiGenerationQueueProducer } from '../../infrastructure/queue/queue-producers.service';
 
 @Injectable()
 export class AiGenerationService {
@@ -58,6 +60,7 @@ export class AiGenerationService {
     private readonly entitlements: GenerationEntitlementService,
     private readonly audit: AuditService,
     @Inject(AI_GENERATION_PROVIDER) private readonly provider: AiGenerationProvider,
+    @Optional() private readonly queue?: AiGenerationQueueProducer,
     private readonly notifications?: NotificationsService,
   ) {}
 
@@ -132,12 +135,16 @@ export class AiGenerationService {
       );
       return saved;
     });
+    const dispatch = await this.queue
+      ?.dispatch(job.id)
+      .catch(() => ({ dispatched: false, queue: 'ai-generation', bullJobId: null }));
     return {
       id: job.id,
       status: job.status,
       requestedCount: job.requestedCount,
       itemCount: units.length,
       configured: this.providerConfigured(),
+      dispatch: dispatch ?? { dispatched: false, queue: 'ai-generation', bullJobId: null },
     };
   }
 
